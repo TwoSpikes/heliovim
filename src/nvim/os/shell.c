@@ -1231,13 +1231,15 @@ static size_t write_output(char *output, size_t remaining, bool eof)
     return 0;
   }
 
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   char *start = output;
   size_t off = 0;
   while (off < remaining) {
     // CRLF
     if (output[off] == CAR && output[off + 1] == NL) {
       output[off] = NUL;
-      ml_append(curwin->w_cursor.lnum++, output, (int)off + 1, false);
+      ml_append(cursor->lnum++, output, (int)off + 1, false);
       size_t skip = off + 2;
       output += skip;
       remaining -= skip;
@@ -1246,7 +1248,7 @@ static size_t write_output(char *output, size_t remaining, bool eof)
     } else if (output[off] == CAR || output[off] == NL) {
       // Insert the line
       output[off] = NUL;
-      ml_append(curwin->w_cursor.lnum++, output, (int)off + 1, false);
+      ml_append(cursor->lnum++, output, (int)off + 1, false);
       size_t skip = off + 1;
       output += skip;
       remaining -= skip;
@@ -1264,9 +1266,9 @@ static size_t write_output(char *output, size_t remaining, bool eof)
   if (eof) {
     if (remaining) {
       // append unfinished line
-      ml_append(curwin->w_cursor.lnum++, output, 0, false);
+      ml_append(cursor->lnum++, output, 0, false);
       // remember that the line ending was missing
-      curbuf->b_no_eol_lnum = curwin->w_cursor.lnum;
+      curbuf->b_no_eol_lnum = cursor->lnum;
       output += remaining;
     } else {
       curbuf->b_no_eol_lnum = 0;

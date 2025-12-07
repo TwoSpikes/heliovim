@@ -84,8 +84,9 @@ ArrayOf(Integer, 2) nvim_win_get_cursor(Window window, Arena *arena, Error *err)
 
   if (win) {
     rv = arena_array(arena, 2);
-    ADD_C(rv, INTEGER_OBJ(win->w_cursor.lnum));
-    ADD_C(rv, INTEGER_OBJ(win->w_cursor.col));
+    pos_T cursor = WIN_PRIMCURS(win);
+    ADD_C(rv, INTEGER_OBJ(cursor.lnum));
+    ADD_C(rv, INTEGER_OBJ(cursor.col));
   }
 
   return rv;
@@ -127,9 +128,10 @@ void nvim_win_set_cursor(Window window, ArrayOf(Integer, 2) pos, Error *err)
     return;
   }
 
-  win->w_cursor.lnum = (linenr_T)row;
-  win->w_cursor.col = (colnr_T)col;
-  win->w_cursor.coladd = 0;
+  pos_T cursor = WIN_PRIMCURS(win);
+  cursor.lnum = (linenr_T)row;
+  cursor.col = (colnr_T)col;
+  cursor.coladd = 0;
   // When column is out of range silently correct it.
   check_cursor_col(win);
 

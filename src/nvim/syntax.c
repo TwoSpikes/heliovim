@@ -498,6 +498,7 @@ static void syn_sync(win_T *wp, linenr_T start_lnum, synstate_T *last_valid)
   linenr_T found_current_lnum = 0;
   int found_current_col = 0;
   lpos_T found_m_endpos;
+  pos_T *cursor = &WIN_PRIMCURS(wp);
 
   // Clear any current state that might be hanging around.
   invalidate_current_state();
@@ -549,9 +550,9 @@ static void syn_sync(win_T *wp, linenr_T start_lnum, synstate_T *last_valid)
     current_lnum = start_lnum;
 
     // set cursor to start of search
-    cursor_save = wp->w_cursor;
-    wp->w_cursor.lnum = start_lnum;
-    wp->w_cursor.col = 0;
+    cursor_save = *cursor;
+    cursor->lnum = start_lnum;
+    cursor->col = 0;
 
     // If the line is inside a comment, need to find the syntax item that
     // defines the comment.
@@ -570,7 +571,7 @@ static void syn_sync(win_T *wp, linenr_T start_lnum, synstate_T *last_valid)
     }
 
     // restore cursor and buffer
-    wp->w_cursor = cursor_save;
+    *cursor = cursor_save;
     curwin = curwin_save;
     curbuf = curbuf_save;
   } else if (syn_block->b_syn_sync_flags & SF_MATCH) {

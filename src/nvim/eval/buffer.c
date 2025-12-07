@@ -195,7 +195,7 @@ static void set_buffer_lines(buf_T *buf, linenr_T lnum_arg, bool append, typval_
       if (u_savesub(lnum) == OK
           && ml_replace(lnum, line, true) == OK) {
         inserted_bytes(lnum, 0, old_len, (int)strlen(line));
-        if (is_curbuf && lnum == curwin->w_cursor.lnum) {
+        if (is_curbuf && lnum == WIN_PRIMCURS(curwin).lnum) {
           check_cursor_col(curwin);
         }
         rettv->vval.v_number = 0;  // OK
@@ -224,8 +224,8 @@ static void set_buffer_lines(buf_T *buf, linenr_T lnum_arg, bool append, typval_
     FOR_ALL_TAB_WINDOWS(tp, wp) {
       if (wp->w_buffer == buf
           && (wp->w_buffer != curbuf || wp == curwin)
-          && wp->w_cursor.lnum > append_lnum) {
-        wp->w_cursor.lnum += (linenr_T)added;
+          && WIN_PRIMCURS(wp).lnum > append_lnum) {
+        WIN_PRIMCURS(wp).lnum += (linenr_T)added;
       }
     }
     check_cursor_col(curwin);
@@ -458,13 +458,14 @@ void f_deletebufline(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 
   FOR_ALL_TAB_WINDOWS(tp, wp) {
     if (wp->w_buffer == buf) {
-      if (wp->w_cursor.lnum > last) {
-        wp->w_cursor.lnum -= (linenr_T)count;
-      } else if (wp->w_cursor.lnum > first) {
-        wp->w_cursor.lnum = first;
+      pos_T *cursor = &WIN_PRIMCURS(wp);
+      if (cursor->lnum > last) {
+        cursor->lnum -= (linenr_T)count;
+      } else if (cursor->lnum > first) {
+        cursor->lnum = first;
       }
-      if (wp->w_cursor.lnum > wp->w_buffer->b_ml.ml_line_count) {
-        wp->w_cursor.lnum = wp->w_buffer->b_ml.ml_line_count;
+      if (cursor->lnum > wp->w_buffer->b_ml.ml_line_count) {
+        cursor->lnum = wp->w_buffer->b_ml.ml_line_count;
       }
     }
   }
@@ -486,7 +487,7 @@ static dict_T *get_buffer_info(buf_T *buf)
   tv_dict_add_nr(dict, S_LEN("bufnr"), buf->b_fnum);
   tv_dict_add_str(dict, S_LEN("name"), buf->b_ffname != NULL ? buf->b_ffname : "");
   tv_dict_add_nr(dict, S_LEN("lnum"),
-                 buf == curbuf ? curwin->w_cursor.lnum : buflist_findlnum(buf));
+                 buf == curbuf ? WIN_PRIMCURS(curwin).lnum : buflist_findlnum(buf));
   tv_dict_add_nr(dict, S_LEN("linecount"), buf->b_ml.ml_line_count);
   tv_dict_add_nr(dict, S_LEN("loaded"), buf->b_ml.ml_mfp != NULL);
   tv_dict_add_nr(dict, S_LEN("listed"), buf->b_p_bl);

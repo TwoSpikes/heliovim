@@ -596,7 +596,7 @@ static linenr_T sign_jump(int id, char *group, buf_T *buf)
 
   // goto a sign ...
   if (buf_jump_open_win(buf) != NULL) {     // ... in a current window
-    curwin->w_cursor.lnum = lnum;
+    WIN_PRIMCURS(curwin).lnum = lnum;
     check_cursor_lnum(curwin);
     beginline(BL_WHITE);
   } else {      // ... not currently in a window
@@ -700,7 +700,7 @@ static void sign_unplace_cmd(buf_T *buf, linenr_T lnum, const char *name, int id
   }
 
   if (id == -1) {
-    lnum = curwin->w_cursor.lnum;
+    lnum = WIN_PRIMCURS(curwin).lnum;
     buf = curwin->w_buffer;
   }
 

@@ -704,11 +704,13 @@ static void get_col(typval_T *argvars, typval_T *rettv, bool charcol)
       col = fp->col + 1;
       // col(".") when the cursor is on the NUL at the end of the line
       // because of "coladd" can be seen as an extra column.
-      if (virtual_active(curwin) && fp == &curwin->w_cursor) {
+      selection_T *primsel = &WIN_PRIMSEL(curwin);
+      pos_T *cursor = &primsel->cursor;
+      if (virtual_active(curwin) && fp == cursor) {
         char *p = get_cursor_pos_ptr();
-        if (curwin->w_cursor.coladd >=
+        if (cursor->coladd >=
             (colnr_T)win_chartabsize(curwin, p,
-                                     curwin->w_virtcol - curwin->w_cursor.coladd)) {
+                                     primsel->virtcol - cursor->coladd)) {
           int l;
           if (*p != NUL && p[(l = utfc_ptr2len(p))] == NUL) {
             col += l;
@@ -932,6 +934,8 @@ static void set_cursorpos(typval_T *argvars, typval_T *rettv, bool charcol)
   colnr_T col;
   colnr_T coladd = 0;
   bool set_curswant = true;
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
 
   rettv->vval.v_number = -1;
   if (argvars[0].v_type == VAR_LIST) {
@@ -947,7 +951,7 @@ static void set_cursorpos(typval_T *argvars, typval_T *rettv, bool charcol)
     col = pos.col;
     coladd = pos.coladd;
     if (curswant >= 0) {
-      curwin->w_curswant = curswant - 1;
+      primsel->curswant = curswant - 1;
       set_curswant = false;
     }
   } else if ((argvars[0].v_type == VAR_NUMBER || argvars[0].v_type == VAR_STRING)
@@ -956,7 +960,7 @@ static void set_cursorpos(typval_T *argvars, typval_T *rettv, bool charcol)
     if (lnum < 0) {
       semsg(_(e_invarg2), tv_get_string(&argvars[0]));
     } else if (lnum == 0) {
-      lnum = curwin->w_cursor.lnum;
+      lnum = cursor->lnum;
     }
     col = (colnr_T)tv_get_number_chk(&argvars[1], NULL);
     if (charcol) {
@@ -973,13 +977,13 @@ static void set_cursorpos(typval_T *argvars, typval_T *rettv, bool charcol)
     return;  // type error; errmsg already given
   }
   if (lnum > 0) {
-    curwin->w_cursor.lnum = lnum;
+    cursor->lnum = lnum;
   }
   if (col != MAXCOL && --col < 0) {
     col = 0;
   }
-  curwin->w_cursor.col = col;
-  curwin->w_cursor.coladd = coladd;
+  cursor->col = col;
+  cursor->coladd = coladd;
 
   // Make sure the cursor is in a valid position.
   check_cursor(curwin);
@@ -2023,15 +2027,19 @@ static void getpos_both(typval_T *argvars, typval_T *rettv, bool getcurpos, bool
   pos_T pos;
   win_T *wp = curwin;
   int fnum = -1;
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  selection_T *wp_primsel = &WIN_PRIMSEL(wp);
+  pos_T *wp_cursor = &wp_primsel->cursor;
 
   if (getcurpos) {
     if (argvars[0].v_type != VAR_UNKNOWN) {
       wp = find_win_by_nr_or_id(&argvars[0]);
       if (wp != NULL) {
-        fp = &wp->w_cursor;
+        fp = wp_cursor;
       }
     } else {
-      fp = &curwin->w_cursor;
+      fp = cursor;
     }
     if (fp != NULL && charcol) {
       pos = *fp;
@@ -2051,22 +2059,22 @@ static void getpos_both(typval_T *argvars, typval_T *rettv, bool getcurpos, bool
   tv_list_append_number(l, (fp != NULL) ? (varnumber_T)fp->coladd : (varnumber_T)0);
   if (getcurpos) {
     const bool save_set_curswant = curwin->w_set_curswant;
-    const colnr_T save_curswant = curwin->w_curswant;
-    const colnr_T save_virtcol = curwin->w_virtcol;
+    const colnr_T save_curswant = primsel->curswant;
+    const colnr_T save_virtcol = primsel->virtcol;
 
     if (wp == curwin) {
       update_curswant();
     }
-    tv_list_append_number(l, (wp == NULL) ? 0 : ((wp->w_curswant == MAXCOL)
+    tv_list_append_number(l, (wp == NULL) ? 0 : ((wp_primsel->curswant == MAXCOL)
                                                  ? (varnumber_T)MAXCOL
-                                                 : (varnumber_T)wp->w_curswant + 1));
+                                                 : (varnumber_T)wp_primsel->curswant + 1));
 
     // Do not change "curswant", as it is unexpected that a get
     // function has a side effect.
     if (wp == curwin && save_set_curswant) {
       curwin->w_set_curswant = save_set_curswant;
-      curwin->w_curswant = save_curswant;
-      curwin->w_virtcol = save_virtcol;
+      primsel->curswant = save_curswant;
+      primsel->virtcol = save_virtcol;
       curwin->w_valid &= ~VALID_VIRTCOL;
     }
   }
@@ -5606,7 +5614,8 @@ static int search_cmn(typval_T *argvars, pos_T *match_pos, int *flagsp)
   }
 
   pos_T save_cursor;
-  pos_T pos = save_cursor = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T pos = save_cursor = *cursor;
   pos_T firstpos = { 0 };
   searchit_arg_T sia = {
     .sa_stop_lnum = lnum_stop,
@@ -5636,12 +5645,12 @@ static int search_cmn(typval_T *argvars, pos_T *match_pos, int *flagsp)
 
     // If the skip expression matches, ignore this match.
     {
-      const pos_T save_pos = curwin->w_cursor;
+      const pos_T save_pos = *cursor;
 
-      curwin->w_cursor = pos;
+      *cursor = pos;
       bool err = false;
       const bool do_skip = eval_expr_to_bool(&argvars[4], &err);
-      curwin->w_cursor = save_pos;
+      *cursor = save_pos;
       if (err) {
         // Evaluating {skip} caused an error, break here.
         subpatnum = FAIL;
@@ -5665,7 +5674,7 @@ static int search_cmn(typval_T *argvars, pos_T *match_pos, int *flagsp)
     if (flags & SP_SETPCMARK) {
       setpcmark();
     }
-    curwin->w_cursor = pos;
+    *cursor = pos;
     if (match_pos != NULL) {
       // Store the match cursor position
       match_pos->lnum = pos.lnum;
@@ -5678,7 +5687,7 @@ static int search_cmn(typval_T *argvars, pos_T *match_pos, int *flagsp)
 
   // If 'n' flag is used: restore cursor position.
   if (flags & SP_NOMOVE) {
-    curwin->w_cursor = save_cursor;
+    *cursor = save_cursor;
   } else {
     curwin->w_set_curswant = true;
   }
@@ -6114,8 +6123,9 @@ int do_searchpair(const char *spat, const char *mpat, const char *epat, int dir,
     use_skip = eval_expr_valid_arg(skip);
   }
 
-  pos_T save_cursor = curwin->w_cursor;
-  pos_T pos = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T save_cursor = *cursor;
+  pos_T pos = *cursor;
   pos_T firstpos;
   clearpos(&firstpos);
   pos_T foundpos;
@@ -6156,14 +6166,14 @@ int do_searchpair(const char *spat, const char *mpat, const char *epat, int dir,
 
     // If the skip pattern matches, ignore this match.
     if (use_skip) {
-      pos_T save_pos = curwin->w_cursor;
-      curwin->w_cursor = pos;
+      pos_T save_pos = *cursor;
+      *cursor = pos;
       bool err = false;
       const bool r = eval_expr_to_bool(skip, &err);
-      curwin->w_cursor = save_pos;
+      *cursor = save_pos;
       if (err) {
         // Evaluating {skip} caused an error, break here.
-        curwin->w_cursor = save_cursor;
+        *cursor = save_cursor;
         retval = -1;
         break;
       }
@@ -6195,7 +6205,7 @@ int do_searchpair(const char *spat, const char *mpat, const char *epat, int dir,
       if (flags & SP_SETPCMARK) {
         setpcmark();
       }
-      curwin->w_cursor = pos;
+      *cursor = pos;
       if (!(flags & SP_REPEAT)) {
         break;
       }
@@ -6205,13 +6215,13 @@ int do_searchpair(const char *spat, const char *mpat, const char *epat, int dir,
 
   if (match_pos != NULL) {
     // Store the match cursor position
-    match_pos->lnum = curwin->w_cursor.lnum;
-    match_pos->col = curwin->w_cursor.col + 1;
+    match_pos->lnum = cursor->lnum;
+    match_pos->col = cursor->col + 1;
   }
 
   // If 'n' flag is used or search failed: restore cursor position.
   if ((flags & SP_NOMOVE) || retval == 0) {
-    curwin->w_cursor = save_cursor;
+    *cursor = save_cursor;
   }
 
   xfree(pat2);
@@ -6365,6 +6375,8 @@ static void f_serverstop(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 static void set_position(typval_T *argvars, typval_T *rettv, bool charpos)
 {
   colnr_T curswant = -1;
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
 
   rettv->vval.v_number = -1;
   const char *const name = tv_get_string_chk(argvars);
@@ -6383,9 +6395,9 @@ static void set_position(typval_T *argvars, typval_T *rettv, bool charpos)
   }
   if (name[0] == '.' && name[1] == NUL) {
     // set cursor; "fnum" is ignored
-    curwin->w_cursor = pos;
+    *cursor = pos;
     if (curswant >= 0) {
-      curwin->w_curswant = curswant - 1;
+      primsel->curswant = curswant - 1;
       curwin->w_set_curswant = false;
     }
     check_cursor(curwin);

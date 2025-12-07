@@ -445,6 +445,7 @@ void terminal_open(Terminal **termpp, buf_T *buf, TerminalOptions opts)
   // Create a new terminal instance and configure it
   Terminal *term = *termpp = xcalloc(1, sizeof(Terminal));
   term->opts = opts;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   // Associate the terminal instance with the new buffer
   term->buf_handle = buf->handle;
@@ -514,7 +515,7 @@ void terminal_open(Terminal **termpp, buf_T *buf, TerminalOptions opts)
   }
   RESET_BINDING(curwin);
   // Reset cursor in current window.
-  curwin->w_cursor = (pos_T){ .lnum = 1, .col = 0, .coladd = 0 };
+  *cursor = (pos_T){ .lnum = 1, .col = 0, .coladd = 0 };
   // Initialize to check if the scrollback buffer has been allocated in a TermOpen autocmd.
   term->sb_buffer = NULL;
   // Apply TermOpen autocmds _before_ configuring the scrollback buffer.
@@ -840,8 +841,8 @@ bool terminal_enter(void)
 static void terminal_check_cursor(void)
 {
   Terminal *term = curbuf->terminal;
-  curwin->w_cursor.lnum = MIN(curbuf->b_ml.ml_line_count,
-                              row_to_linenr(term, term->cursor.row));
+  WIN_PRIMCURS(curwin).lnum = MIN(curbuf->b_ml.ml_line_count,
+                                  row_to_linenr(term, term->cursor.row));
   const linenr_T topline = MAX(curbuf->b_ml.ml_line_count - curwin->w_view_height + 1, 1);
   // Don't update topline if unchanged to avoid unnecessary redraws.
   if (topline != curwin->w_topline) {
@@ -2336,14 +2337,15 @@ static void adjust_topline_cursor(Terminal *term, buf_T *buf, int added)
         continue;
       }
 
-      bool following = ml_end == wp->w_cursor.lnum + added;  // cursor at end?
+      pos_T *cursor = &WIN_PRIMCURS(wp);
+      bool following = ml_end == cursor->lnum + added;  // cursor at end?
       if (following) {
         // "Follow" the terminal output
-        wp->w_cursor.lnum = ml_end;
-        set_topline(wp, MAX(wp->w_cursor.lnum - wp->w_view_height + 1, 1));
+        cursor->lnum = ml_end;
+        set_topline(wp, MAX(cursor->lnum - wp->w_view_height + 1, 1));
       } else {
         // Ensure valid cursor for each window displaying this terminal.
-        wp->w_cursor.lnum = MIN(wp->w_cursor.lnum, ml_end);
+        cursor->lnum = MIN(cursor->lnum, ml_end);
       }
       mb_check_adjust_col(wp);
     }

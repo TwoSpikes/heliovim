@@ -1306,6 +1306,7 @@ size_t spell_move_to(win_T *wp, int dir, smt_T behaviour, bool curline, hlf_T *a
   colnr_T capcol = -1;
   bool found_one = false;
   bool wrapped = false;
+  pos_T *cursor = &WIN_PRIMCURS(wp);
 
   size_t ret = 0;
 
@@ -1318,7 +1319,7 @@ size_t spell_move_to(win_T *wp, int dir, smt_T behaviour, bool curline, hlf_T *a
   // We concatenate the start of the next line, so that wrapped words work
   // (e.g. "et<line-break>cetera").  Doesn't work when searching backwards
   // though...
-  linenr_T lnum = wp->w_cursor.lnum;
+  linenr_T lnum = cursor->lnum;
   clearpos(&found_pos);
 
   // Ephemeral extmarks are currently stored in the global decor_state.
@@ -1380,9 +1381,9 @@ size_t spell_move_to(win_T *wp, int dir, smt_T behaviour, bool curline, hlf_T *a
       // When searching backward don't search after the cursor.  Unless
       // we wrapped around the end of the buffer.
       if (dir == BACKWARD
-          && lnum == wp->w_cursor.lnum
+          && lnum == cursor->lnum
           && !wrapped
-          && (colnr_T)(p - buf) >= wp->w_cursor.col) {
+          && (colnr_T)(p - buf) >= cursor->col) {
         break;
       }
 
@@ -1398,11 +1399,11 @@ size_t spell_move_to(win_T *wp, int dir, smt_T behaviour, bool curline, hlf_T *a
           // When searching forward only accept a bad word after
           // the cursor.
           if (dir == BACKWARD
-              || lnum != wp->w_cursor.lnum
+              || lnum != cursor->lnum
               || wrapped
               || ((colnr_T)(curline
                             ? p - buf + (ptrdiff_t)len
-                            : p - buf) > wp->w_cursor.col)) {
+                            : p - buf) > cursor->col)) {
             colnr_T col = (colnr_T)(p - buf);
 
             bool no_plain_buffer = (wp->w_s->b_p_spo_flags & kOptSpoFlagNoplainbuffer) != 0;
@@ -1431,7 +1432,7 @@ size_t spell_move_to(win_T *wp, int dir, smt_T behaviour, bool curline, hlf_T *a
               };
               if (dir == FORWARD) {
                 // No need to search further.
-                wp->w_cursor = found_pos;
+                *cursor = found_pos;
                 if (attrp != NULL) {
                   *attrp = attr;
                 }
@@ -1459,7 +1460,7 @@ size_t spell_move_to(win_T *wp, int dir, smt_T behaviour, bool curline, hlf_T *a
 
     if (dir == BACKWARD && found_pos.lnum != 0) {
       // Use the last match in the line (before the cursor).
-      wp->w_cursor = found_pos;
+      *cursor = found_pos;
       ret = found_len;
       goto theend;
     }
@@ -1470,7 +1471,7 @@ size_t spell_move_to(win_T *wp, int dir, smt_T behaviour, bool curline, hlf_T *a
 
     // If we are back at the starting line and searched it again there
     // is no match, give up.
-    if (lnum == wp->w_cursor.lnum && wrapped) {
+    if (lnum == cursor->lnum && wrapped) {
       break;
     }
 
@@ -1507,7 +1508,7 @@ size_t spell_move_to(win_T *wp, int dir, smt_T behaviour, bool curline, hlf_T *a
 
       // If we are back at the starting line and there is no match then
       // give up.
-      if (lnum == wp->w_cursor.lnum && !found_one) {
+      if (lnum == cursor->lnum && !found_one) {
         break;
       }
 
@@ -2641,7 +2642,8 @@ bool check_need_cap(win_T *wp, linenr_T lnum, colnr_T col)
 // ":spellrepall"
 void ex_spellrepall(exarg_T *eap)
 {
-  pos_T pos = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T pos = *cursor;
   bool save_ws = p_ws;
   linenr_T prev_lnum = 0;
 
@@ -2660,7 +2662,7 @@ void ex_spellrepall(exarg_T *eap)
 
   sub_nsubs = 0;
   sub_nlines = 0;
-  curwin->w_cursor.lnum = 0;
+  cursor->lnum = 0;
   while (!got_int) {
     if (do_search(NULL, '/', '/', frompat, frompatlen, 1, SEARCH_KEEP, NULL) == 0
         || u_save_cursor() == FAIL) {
@@ -2671,26 +2673,26 @@ void ex_spellrepall(exarg_T *eap)
     // when changing "etc" to "etc.".
     char *line = get_cursor_line_ptr();
     if (addlen <= 0
-        || strncmp(line + curwin->w_cursor.col, repl_to, repl_to_len) != 0) {
+        || strncmp(line + cursor->col, repl_to, repl_to_len) != 0) {
       char *p = xmalloc((size_t)get_cursor_line_len() + (size_t)addlen + 1);
-      memmove(p, line, (size_t)curwin->w_cursor.col);
-      STRCPY(p + curwin->w_cursor.col, repl_to);
-      strcat(p, line + curwin->w_cursor.col + repl_from_len);
-      ml_replace(curwin->w_cursor.lnum, p, false);
-      inserted_bytes(curwin->w_cursor.lnum, curwin->w_cursor.col,
+      memmove(p, line, (size_t)cursor->col);
+      STRCPY(p + cursor->col, repl_to);
+      strcat(p, line + cursor->col + repl_from_len);
+      ml_replace(cursor->lnum, p, false);
+      inserted_bytes(cursor->lnum, cursor->col,
                      (int)repl_from_len, (int)repl_to_len);
 
-      if (curwin->w_cursor.lnum != prev_lnum) {
+      if (cursor->lnum != prev_lnum) {
         sub_nlines++;
-        prev_lnum = curwin->w_cursor.lnum;
+        prev_lnum = cursor->lnum;
       }
       sub_nsubs++;
     }
-    curwin->w_cursor.col += (colnr_T)repl_to_len;
+    cursor->col += (colnr_T)repl_to_len;
   }
 
   p_ws = save_ws;
-  curwin->w_cursor = pos;
+  *cursor = pos;
   xfree(frompat);
 
   if (sub_nsubs == 0) {
@@ -3635,7 +3637,7 @@ static bool spell_expand_need_cap;
 
 void spell_expand_check_cap(colnr_T col)
 {
-  spell_expand_need_cap = check_need_cap(curwin, curwin->w_cursor.lnum, col);
+  spell_expand_need_cap = check_need_cap(curwin, WIN_PRIMCURS(curwin).lnum, col);
 }
 
 // Get list of spelling suggestions.

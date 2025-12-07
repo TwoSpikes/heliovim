@@ -547,11 +547,12 @@ void prepare_search_hl(win_T *wp, match_T *search_hl, linenr_T lnum)
 static void check_cur_search_hl(win_T *wp, match_T *shl)
 {
   linenr_T linecount = shl->rm.endpos[0].lnum - shl->rm.startpos[0].lnum;
+  pos_T *cursor = &WIN_PRIMCURS(wp);
 
-  if (wp->w_cursor.lnum >= shl->lnum
-      && wp->w_cursor.lnum <= shl->lnum + linecount
-      && (wp->w_cursor.lnum > shl->lnum || wp->w_cursor.col >= shl->rm.startpos[0].col)
-      && (wp->w_cursor.lnum < shl->lnum + linecount || wp->w_cursor.col < shl->rm.endpos[0].col)) {
+  if (cursor->lnum >= shl->lnum
+      && cursor->lnum <= shl->lnum + linecount
+      && (cursor->lnum > shl->lnum || cursor->col >= shl->rm.startpos[0].col)
+      && (cursor->lnum < shl->lnum + linecount || cursor->col < shl->rm.endpos[0].col)) {
     shl->has_cursor = true;
   } else {
     shl->has_cursor = false;

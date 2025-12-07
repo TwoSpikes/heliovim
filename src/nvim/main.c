@@ -550,7 +550,7 @@ int main(int argc, char **argv)
 
   // Ex starts at last line of the file.
   if (exmode_active) {
-    curwin->w_cursor.lnum = curbuf->b_ml.ml_line_count;
+    WIN_PRIMCURS(curwin).lnum = curbuf->b_ml.ml_line_count;
   }
 
   apply_autocmds(EVENT_BUFENTER, NULL, NULL, false, curbuf);
@@ -1921,7 +1921,7 @@ static void exe_pre_commands(mparm_T *parmp)
     return;
   }
 
-  curwin->w_cursor.lnum = 0;     // just in case..
+  WIN_PRIMCURS(curwin).lnum = 0;     // just in case..
   estack_push(ETYPE_ARGS, _("pre-vimrc command line"), 0);
   current_sctx.sc_sid = SID_CMDARG;
   for (int i = 0; i < cnt; i++) {
@@ -1939,8 +1939,9 @@ static void exe_commands(mparm_T *parmp)
   // pattern on line 1.  But don't move the cursor when an autocommand
   // with g`" was used.
   msg_scroll = true;
-  if (parmp->tagname == NULL && curwin->w_cursor.lnum <= 1) {
-    curwin->w_cursor.lnum = 0;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  if (parmp->tagname == NULL && cursor->lnum <= 1) {
+    cursor->lnum = 0;
   }
   estack_push(ETYPE_ARGS, "command line", 0);
   current_sctx.sc_sid = SID_CARG;
@@ -1953,8 +1954,8 @@ static void exe_commands(mparm_T *parmp)
   }
   estack_pop();
   current_sctx.sc_sid = 0;
-  if (curwin->w_cursor.lnum == 0) {
-    curwin->w_cursor.lnum = 1;
+  if (cursor->lnum == 0) {
+    cursor->lnum = 1;
   }
 
   if (!exmode_active) {

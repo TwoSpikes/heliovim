@@ -683,7 +683,7 @@ void nvim_set_current_dir(String dir, Error *err)
 String nvim_get_current_line(Arena *arena, Error *err)
   FUNC_API_SINCE(1)
 {
-  return buffer_get_line(curbuf->handle, curwin->w_cursor.lnum - 1, arena, err);
+  return buffer_get_line(curbuf->handle, WIN_PRIMCURS(curwin).lnum - 1, arena, err);
 }
 
 /// Sets the text on the current line.
@@ -694,7 +694,7 @@ void nvim_set_current_line(String line, Arena *arena, Error *err)
   FUNC_API_SINCE(1)
   FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
-  buffer_set_line(curbuf->handle, curwin->w_cursor.lnum - 1, line, arena, err);
+  buffer_set_line(curbuf->handle, WIN_PRIMCURS(curwin).lnum - 1, line, arena, err);
 }
 
 /// Deletes the current line.
@@ -704,7 +704,7 @@ void nvim_del_current_line(Arena *arena, Error *err)
   FUNC_API_SINCE(1)
   FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
-  buffer_del_line(curbuf->handle, curwin->w_cursor.lnum - 1, arena, err);
+  buffer_del_line(curbuf->handle, WIN_PRIMCURS(curwin).lnum - 1, arena, err);
 }
 
 /// Gets a global (g:) variable.
@@ -2152,7 +2152,7 @@ DictAs(eval_statusline_ret) nvim_eval_statusline(String str, Dict(eval_statuslin
     } else if (use_cursor_line_highlight(wp, lnum)) {
       stc_hl_id = HLF_CLN;
     } else if (wp->w_p_rnu) {
-      stc_hl_id = (lnum < wp->w_cursor.lnum ? HLF_LNA : HLF_LNB);
+      stc_hl_id = (lnum < WIN_PRIMCURS(wp).lnum ? HLF_LNA : HLF_LNB);
     } else {
       stc_hl_id = HLF_N;
     }

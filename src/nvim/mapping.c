@@ -1642,7 +1642,8 @@ char *eval_map_expr(mapblock_T *mp, int c)
   // effects.  Also restore the cursor position.
   expr_map_lock++;
   set_vim_var_char(c);    // set v:char to the typed character
-  const pos_T save_cursor = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  const pos_T save_cursor = *cursor;
   const int save_msg_col = msg_col;
   const int save_msg_row = msg_row;
   if (mp->m_luaref != LUA_NOREF) {
@@ -1662,7 +1663,7 @@ char *eval_map_expr(mapblock_T *mp, int c)
     xfree(expr);
   }
   expr_map_lock--;
-  curwin->w_cursor = save_cursor;
+  *cursor = save_cursor;
   msg_col = save_msg_col;
   msg_row = save_msg_row;
 

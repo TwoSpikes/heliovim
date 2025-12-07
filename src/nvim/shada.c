@@ -2551,14 +2551,15 @@ static ShaDaWriteResult shada_write(FileDescriptor *const sd_writer,
 
   // Update numbered marks: replace '0 mark with the current position,
   // remove '9 and shift all other marks. Skip if f0 in 'shada'.
-  if (dump_global_marks && !ignore_buf(curbuf, &removable_bufs) && curwin->w_cursor.lnum != 0) {
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  if (dump_global_marks && !ignore_buf(curbuf, &removable_bufs) && cursor->lnum != 0) {
     replace_numbered_mark(wms, 0, (ShadaEntry) {
       .can_free_entry = false,
       .type = kSDItemGlobalMark,
       .timestamp = os_time(),
       .data = {
         .filemark = {
-          .mark = curwin->w_cursor,
+          .mark = *cursor,
           .name = '0',
           .fname = curbuf->b_ffname,
         }
