@@ -336,18 +336,19 @@ int get_sw_value(buf_T *buf)
 /// Idem, using "pos".
 static int get_sw_value_pos(buf_T *buf, pos_T *pos, bool left)
 {
-  pos_T save_cursor = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T save_cursor = *cursor;
 
-  curwin->w_cursor = *pos;
+  *cursor = *pos;
   int sw_value = get_sw_value_col(buf, get_nolist_virtcol(), left);
-  curwin->w_cursor = save_cursor;
+  *cursor = save_cursor;
   return sw_value;
 }
 
 /// Idem, using the first non-black in the current line.
 int get_sw_value_indent(buf_T *buf, bool left)
 {
-  pos_T pos = curwin->w_cursor;
+  pos_T pos = WIN_PRIMCURS(curwin);
 
   pos.col = (colnr_T)getwhitecols_curline();
   return get_sw_value_pos(buf, &pos, left);
@@ -689,16 +690,18 @@ bool set_indent(int size, int flags)
   }
   memmove(s, p, (size_t)line_len);
 
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   // Replace the line (unless undo fails).
-  if (!(flags & SIN_UNDO) || (u_savesub(curwin->w_cursor.lnum) == OK)) {
+  if (!(flags & SIN_UNDO) || (u_savesub(cursor->lnum) == OK)) {
     const colnr_T old_offset = (colnr_T)(p - oldline);
     const colnr_T new_offset = (colnr_T)(s - newline);
 
     // this may free "newline"
-    ml_replace(curwin->w_cursor.lnum, newline, false);
+    ml_replace(cursor->lnum, newline, false);
     if (!(flags & SIN_NOMARK)) {
       extmark_splice_cols(curbuf,
-                          (int)curwin->w_cursor.lnum - 1,
+                          (int)cursor->lnum - 1,
                           skipcols,
                           old_offset - skipcols,
                           new_offset - skipcols,
@@ -706,11 +709,11 @@ bool set_indent(int size, int flags)
     }
 
     if (flags & SIN_CHANGED) {
-      changed_bytes(curwin->w_cursor.lnum, 0);
+      changed_bytes(cursor->lnum, 0);
     }
 
     // Correct saved cursor position if it is in this line.
-    if (saved_cursor.lnum == curwin->w_cursor.lnum) {
+    if (saved_cursor.lnum == cursor->lnum) {
       if (saved_cursor.col >= old_offset) {
         // Cursor was after the indent, adjust for the number of
         // bytes added/removed.
@@ -725,7 +728,7 @@ bool set_indent(int size, int flags)
   } else {
     xfree(newline);
   }
-  curwin->w_cursor.col = ind_len;
+  cursor->col = ind_len;
   return retval;
 }
 
@@ -972,7 +975,7 @@ bool inindent(int extra)
     ptr++;
   }
 
-  if (col >= curwin->w_cursor.col + extra) {
+  if (col >= WIN_PRIMCURS(curwin).col + extra) {
     return true;
   }
   return false;
@@ -984,7 +987,8 @@ void op_reindent(oparg_T *oap, Indenter how)
   int i = 0;
   linenr_T first_changed = 0;
   linenr_T last_changed = 0;
-  linenr_T start_lnum = curwin->w_cursor.lnum;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  linenr_T start_lnum = cursor->lnum;
 
   // Don't even try when 'modifiable' is off.
   if (!MODIFIABLE(curbuf)) {
@@ -1020,18 +1024,18 @@ void op_reindent(oparg_T *oap, Indenter how)
         if (amount >= 0 && set_indent(amount, 0)) {
           // did change the indent, call changed_lines() later
           if (first_changed == 0) {
-            first_changed = curwin->w_cursor.lnum;
+            first_changed = cursor->lnum;
           }
-          last_changed = curwin->w_cursor.lnum;
+          last_changed = cursor->lnum;
         }
       }
-      curwin->w_cursor.lnum++;
-      curwin->w_cursor.col = 0;      // make sure it's valid
+      cursor->lnum++;
+      cursor->col = 0;      // make sure it's valid
     }
   }
 
   // put cursor on first non-blank of indented line
-  curwin->w_cursor.lnum = start_lnum;
+  cursor->lnum = start_lnum;
   beginline(BL_SOL | BL_FIX);
 
   // Mark changed lines so that they will be redrawn.  When Visual
@@ -1075,6 +1079,7 @@ bool may_do_si(void)
 void ins_try_si(int c)
 {
   pos_T *pos;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   // do some very smart indenting when entering '{' or '}'
   if (((did_si || can_si_back) && c == '{') || (can_si && c == '}' && inindent(0))) {
@@ -1084,7 +1089,7 @@ void ins_try_si(int c)
     bool temp;
     // for '}' set indent equal to indent of line containing matching '{'
     if (c == '}' && (pos = findmatch(NULL, '{')) != NULL) {
-      old_pos = curwin->w_cursor;
+      old_pos = *cursor;
       // If the matching '{' has a ')' immediately before it (ignoring
       // white-space), then line up with the start of the line
       // containing the matching '(' if there is one.  This handles the
@@ -1095,27 +1100,27 @@ void ins_try_si(int c)
       if (i > 0) {              // skip blanks before '{'
         while (--i > 0 && ascii_iswhite(ptr[i])) {}
       }
-      curwin->w_cursor.lnum = pos->lnum;
-      curwin->w_cursor.col = i;
+      cursor->lnum = pos->lnum;
+      cursor->col = i;
       if (ptr[i] == ')' && (pos = findmatch(NULL, '(')) != NULL) {
-        curwin->w_cursor = *pos;
+        *cursor = *pos;
       }
       i = get_indent();
-      curwin->w_cursor = old_pos;
+      *cursor = old_pos;
       if (State & VREPLACE_FLAG) {
         change_indent(INDENT_SET, i, false, true);
       } else {
         set_indent(i, SIN_CHANGED);
       }
-    } else if (curwin->w_cursor.col > 0) {
+    } else if (cursor->col > 0) {
       // when inserting '{' after "O" reduce indent, but not
       // more than indent of previous line
       temp = true;
-      if (c == '{' && can_si_back && curwin->w_cursor.lnum > 1) {
-        old_pos = curwin->w_cursor;
+      if (c == '{' && can_si_back && cursor->lnum > 1) {
+        old_pos = *cursor;
         i = get_indent();
-        while (curwin->w_cursor.lnum > 1) {
-          ptr = skipwhite(ml_get(--(curwin->w_cursor.lnum)));
+        while (cursor->lnum > 1) {
+          ptr = skipwhite(ml_get(--(cursor->lnum)));
 
           // ignore empty lines and lines starting with '#'.
           if (*ptr != '#' && *ptr != NUL) {
@@ -1125,7 +1130,7 @@ void ins_try_si(int c)
         if (get_indent() >= i) {
           temp = false;
         }
-        curwin->w_cursor = old_pos;
+        *cursor = old_pos;
       }
       if (temp) {
         shift_line(true, false, 1, true);
@@ -1134,14 +1139,14 @@ void ins_try_si(int c)
   }
 
   // set indent of '#' always to 0
-  if (curwin->w_cursor.col > 0 && can_si && c == '#' && inindent(0)) {
+  if (cursor->col > 0 && can_si && c == '#' && inindent(0)) {
     // remember current indent for next line
     old_indent = get_indent();
     set_indent(0, SIN_CHANGED);
   }
 
   // Adjust ai_col, the char at this position can be deleted.
-  ai_col = MIN(ai_col, curwin->w_cursor.col);
+  ai_col = MIN(ai_col, cursor->col);
 }
 
 /// Insert an indent (for <Tab> or CTRL-T) or delete an indent (for CTRL-D).
@@ -1157,30 +1162,32 @@ void change_indent(int type, int amount, int round, bool call_changed_bytes)
   int insstart_less;                    // reduction for Insstart.col
   colnr_T orig_col = 0;                 // init for GCC
   char *orig_line = NULL;     // init for GCC
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
 
   // MODE_VREPLACE state needs to know what the line was like before changing
   if (State & VREPLACE_FLAG) {
     orig_line = xstrnsave(get_cursor_line_ptr(), (size_t)get_cursor_line_len());
-    orig_col = curwin->w_cursor.col;
+    orig_col = cursor->col;
   }
 
   // for the following tricks we don't want list mode
   int save_p_list = curwin->w_p_list;
   curwin->w_p_list = false;
-  colnr_T vc = getvcol_nolist(&curwin->w_cursor);
+  colnr_T vc = getvcol_nolist(cursor);
   int vcol = vc;
 
   // For Replace mode we need to fix the replace stack later, which is only
   // possible when the cursor is in the indent.  Remember the number of
   // characters before the cursor if it's possible.
-  int start_col = curwin->w_cursor.col;
+  int start_col = cursor->col;
 
   // determine offset from first non-blank
-  int new_cursor_col = curwin->w_cursor.col;
+  int new_cursor_col = cursor->col;
   beginline(BL_WHITE);
-  new_cursor_col -= curwin->w_cursor.col;
+  new_cursor_col -= cursor->col;
 
-  insstart_less = curwin->w_cursor.col;
+  insstart_less = cursor->col;
 
   // If the cursor is in the indent, compute how many screen columns the
   // cursor is to the left of the first non-blank.
@@ -1205,7 +1212,7 @@ void change_indent(int type, int amount, int round, bool call_changed_bytes)
     shift_line(type == INDENT_DEC, round, 1, call_changed_bytes);
     State = save_State;
   }
-  insstart_less -= curwin->w_cursor.col;
+  insstart_less -= cursor->col;
 
   // Try to put cursor on same character.
   // If the cursor is at or after the first non-blank in the line,
@@ -1220,14 +1227,14 @@ void change_indent(int type, int amount, int round, bool call_changed_bytes)
     if (new_cursor_col == 0) {
       insstart_less = MAXCOL;
     }
-    new_cursor_col += curwin->w_cursor.col;
+    new_cursor_col += cursor->col;
   } else if (!(State & MODE_INSERT)) {
-    new_cursor_col = curwin->w_cursor.col;
+    new_cursor_col = cursor->col;
   } else {
     // Compute the screen column where the cursor should be.
     vcol = get_indent() - vcol;
     int const end_vcol = (colnr_T)((vcol < 0) ? 0 : vcol);
-    curwin->w_virtcol = end_vcol;
+    primsel->virtcol = end_vcol;
 
     // Advance the cursor until we reach the right screen column.
     new_cursor_col = 0;
@@ -1253,9 +1260,9 @@ void change_indent(int type, int amount, int round, bool call_changed_bytes)
 
     // May need to insert spaces to be able to position the cursor on
     // the right screen column.
-    if (vcol != (int)curwin->w_virtcol) {
-      curwin->w_cursor.col = (colnr_T)new_cursor_col;
-      const size_t ptrlen = (size_t)(curwin->w_virtcol - vcol);
+    if (vcol != (int)primsel->virtcol) {
+      cursor->col = (colnr_T)new_cursor_col;
+      const size_t ptrlen = (size_t)(primsel->virtcol - vcol);
       char *ptr = xmallocz(ptrlen);
       memset(ptr, ' ', ptrlen);
       new_cursor_col += (int)ptrlen;
@@ -1269,13 +1276,13 @@ void change_indent(int type, int amount, int round, bool call_changed_bytes)
   }
 
   curwin->w_p_list = save_p_list;
-  curwin->w_cursor.col = MAX(0, (colnr_T)new_cursor_col);
+  cursor->col = MAX(0, (colnr_T)new_cursor_col);
   curwin->w_set_curswant = true;
   changed_cline_bef_curs(curwin);
 
   // May have to adjust the start of the insert.
   if (State & MODE_INSERT) {
-    if (curwin->w_cursor.lnum == Insstart.lnum && Insstart.col != 0) {
+    if (cursor->lnum == Insstart.lnum && Insstart.col != 0) {
       if ((int)Insstart.col <= insstart_less) {
         Insstart.col = 0;
       } else {
@@ -1295,11 +1302,11 @@ void change_indent(int type, int amount, int round, bool call_changed_bytes)
   // If the number of characters before the cursor increased, need to push a
   // few NULs onto the replace stack.
   if (REPLACE_NORMAL(State) && start_col >= 0) {
-    while (start_col > (int)curwin->w_cursor.col) {
+    while (start_col > (int)cursor->col) {
       replace_join(0);              // remove a NUL from the replace stack
       start_col--;
     }
-    while (start_col < (int)curwin->w_cursor.col) {
+    while (start_col < (int)cursor->col) {
       replace_push_nul();
       start_col++;
     }
@@ -1313,12 +1320,12 @@ void change_indent(int type, int amount, int round, bool call_changed_bytes)
     char *new_line = xstrnsave(get_cursor_line_ptr(), (size_t)get_cursor_line_len());
 
     // We only put back the new line up to the cursor
-    new_line[curwin->w_cursor.col] = NUL;
-    int new_col = curwin->w_cursor.col;
+    new_line[cursor->col] = NUL;
+    int new_col = cursor->col;
 
     // Put back original line
-    ml_replace(curwin->w_cursor.lnum, orig_line, false);
-    curwin->w_cursor.col = orig_col;
+    ml_replace(cursor->lnum, orig_line, false);
+    cursor->col = orig_col;
 
     curbuf_splice_pending++;
 
@@ -1335,7 +1342,7 @@ void change_indent(int type, int amount, int round, bool call_changed_bytes)
     // TODO(bfredl): test for crazy edge cases, like we stand on a TAB or
     // something? does this even do the right text change then?
     int delta = orig_col - new_col;
-    extmark_splice_cols(curbuf, (int)curwin->w_cursor.lnum - 1, new_col,
+    extmark_splice_cols(curbuf, (int)cursor->lnum - 1, new_col,
                         delta < 0 ? -delta : 0,
                         delta > 0 ? delta : 0,
                         kExtmarkUndo);
@@ -1446,11 +1453,13 @@ bool copy_indent(int size, char *src)
   // Append the original line
   memmove(p, get_cursor_line_ptr(), (size_t)line_len);
 
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   // Replace the line
-  ml_replace(curwin->w_cursor.lnum, line, false);
+  ml_replace(cursor->lnum, line, false);
 
   // Put the cursor after the indent.
-  curwin->w_cursor.col = ind_len;
+  cursor->col = ind_len;
   return true;
 }
 
@@ -1643,7 +1652,7 @@ void ex_retab(exarg_T *eap)
     }
     xfree(new_ts_str);
   }
-  coladvance(curwin, curwin->w_curswant);
+  coladvance(curwin, WIN_PRIMSEL(curwin).curswant);
 
   u_clearline(curbuf);
 }
@@ -1656,10 +1665,12 @@ int get_expr_indent(void)
 
   // Save and restore cursor position and curswant, in case it was changed
   // * via :normal commands.
-  pos_T save_pos = curwin->w_cursor;
-  colnr_T save_curswant = curwin->w_curswant;
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T save_pos = *cursor;
+  colnr_T save_curswant = primsel->curswant;
   bool save_set_curswant = curwin->w_set_curswant;
-  set_vim_var_nr(VV_LNUM, (varnumber_T)curwin->w_cursor.lnum);
+  set_vim_var_nr(VV_LNUM, (varnumber_T)cursor->lnum);
 
   if (use_sandbox) {
     sandbox++;
@@ -1684,8 +1695,8 @@ int get_expr_indent(void)
   // command.
   int save_State = State;
   State = MODE_INSERT;
-  curwin->w_cursor = save_pos;
-  curwin->w_curswant = save_curswant;
+  *cursor = save_pos;
+  primsel->curswant = save_curswant;
   curwin->w_set_curswant = save_set_curswant;
   check_cursor(curwin);
   State = save_State;
@@ -1722,10 +1733,11 @@ int get_lisp_indent(void)
 {
   pos_T *pos;
   pos_T paren;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   int amount;
 
-  pos_T realpos = curwin->w_cursor;
-  curwin->w_cursor.col = 0;
+  pos_T realpos = *cursor;
+  cursor->col = 0;
 
   if ((pos = findmatch(NULL, '(')) == NULL) {
     pos = findmatch(NULL, '[');
@@ -1744,8 +1756,8 @@ int get_lisp_indent(void)
     amount = -1;
     int parencount = 0;
 
-    while (--curwin->w_cursor.lnum >= pos->lnum) {
-      if (linewhite(curwin->w_cursor.lnum)) {
+    while (--cursor->lnum >= pos->lnum) {
+      if (linewhite(cursor->lnum)) {
         continue;
       }
 
@@ -1795,8 +1807,8 @@ int get_lisp_indent(void)
     }
 
     if (amount == -1) {
-      curwin->w_cursor.lnum = pos->lnum;
-      curwin->w_cursor.col = pos->col;
+      cursor->lnum = pos->lnum;
+      cursor->col = pos->col;
       colnr_T col = pos->col;
 
       char *line = get_cursor_line_ptr();
@@ -1883,7 +1895,7 @@ int get_lisp_indent(void)
   } else {
     amount = 0;  // No matching '(' or '[' found, use zero indent.
   }
-  curwin->w_cursor = realpos;
+  *cursor = realpos;
 
   return amount;
 }
@@ -1915,7 +1927,7 @@ void fixthisline(IndentGetter get_the_indent)
   }
 
   change_indent(INDENT_SET, amount, false, true);
-  if (linewhite(curwin->w_cursor.lnum)) {
+  if (linewhite(WIN_PRIMCURS(curwin).lnum)) {
     did_ai = true;  // delete the indent if the line stays empty
   }
 }
@@ -1960,12 +1972,13 @@ void f_indent(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 /// "lispindent(lnum)" function
 void f_lispindent(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 {
-  const pos_T pos = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  const pos_T pos = *cursor;
   const linenr_T lnum = tv_get_lnum(argvars);
   if (lnum >= 1 && lnum <= curbuf->b_ml.ml_line_count) {
-    curwin->w_cursor.lnum = lnum;
+    cursor->lnum = lnum;
     rettv->vval.v_number = get_lisp_indent();
-    curwin->w_cursor = pos;
+    *cursor = pos;
   } else {
     rettv->vval.v_number = -1;
   }

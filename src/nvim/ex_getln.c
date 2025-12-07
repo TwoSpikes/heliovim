@@ -238,7 +238,7 @@ static void trigger_cmd_autocmd(int typechar, event_T evt)
 static void save_viewstate(win_T *wp, viewstate_T *vs)
   FUNC_ATTR_NONNULL_ALL
 {
-  vs->vs_curswant = wp->w_curswant;
+  vs->vs_curswant = WIN_PRIMSEL(wp).curswant;
   vs->vs_leftcol = wp->w_leftcol;
   vs->vs_skipcol = wp->w_skipcol;
   vs->vs_topline = wp->w_topline;
@@ -250,7 +250,7 @@ static void save_viewstate(win_T *wp, viewstate_T *vs)
 static void restore_viewstate(win_T *wp, viewstate_T *vs)
   FUNC_ATTR_NONNULL_ALL
 {
-  wp->w_curswant = vs->vs_curswant;
+  WIN_PRIMSEL(wp).curswant = vs->vs_curswant;
   wp->w_leftcol = vs->vs_leftcol;
   wp->w_skipcol = vs->vs_skipcol;
   wp->w_topline = vs->vs_topline;
@@ -261,14 +261,16 @@ static void restore_viewstate(win_T *wp, viewstate_T *vs)
 
 static void init_incsearch_state(incsearch_state_T *s)
 {
+  pos_T cursor = WIN_PRIMCURS(curwin);
+
   s->winid = curwin->handle;
-  s->match_start = curwin->w_cursor;
+  s->match_start = cursor;
   s->did_incsearch = false;
   s->incsearch_postponed = false;
   s->magic_overruled_save = magic_overruled;
   clearpos(&s->match_end);
-  s->save_cursor = curwin->w_cursor;  // may be restored later
-  s->search_start = curwin->w_cursor;
+  s->save_cursor = cursor;  // may be restored later
+  s->search_start = cursor;
   save_viewstate(curwin, &s->init_viewstate);
   save_viewstate(curwin, &s->old_viewstate);
 }
@@ -394,8 +396,9 @@ bool parse_pattern_and_range(pos_T *incsearch_start, int *search_delim, int *ski
   *patlen = (int)(end - p);
 
   // Parse the address range
-  pos_T save_cursor = curwin->w_cursor;
-  curwin->w_cursor = *incsearch_start;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T save_cursor = *cursor;
+  *cursor = *incsearch_start;
 
   parse_cmd_address(&ea, &dummy, true);
 
@@ -405,10 +408,10 @@ bool parse_pattern_and_range(pos_T *incsearch_start, int *search_delim, int *ski
     search_last_line = MAX(ea.line2, ea.line1);
   } else if (cmd[0] == 's' && cmd[1] != 'o') {
     // :s defaults to the current line
-    search_first_line = search_last_line = curwin->w_cursor.lnum;
+    search_first_line = search_last_line = cursor->lnum;
   }
 
-  curwin->w_cursor = save_cursor;
+  *cursor = save_cursor;
   return true;
 }
 
@@ -482,17 +485,20 @@ static void may_do_incsearch_highlighting(int firstc, int count, incsearch_state
     ui_flush();
   }
 
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+
   if (search_first_line == 0) {
     // start at the original cursor position
-    curwin->w_cursor = s->search_start;
+    *cursor = s->search_start;
   } else if (search_first_line > curbuf->b_ml.ml_line_count) {
     // start after the last line
-    curwin->w_cursor.lnum = curbuf->b_ml.ml_line_count;
-    curwin->w_cursor.col = MAXCOL;
+    cursor->lnum = curbuf->b_ml.ml_line_count;
+    cursor->col = MAXCOL;
   } else {
     // start at the first line in the range
-    curwin->w_cursor.lnum = search_first_line;
-    curwin->w_cursor.col = 0;
+    cursor->lnum = search_first_line;
+    cursor->col = 0;
   }
 
   int found = 0;  // do_search() result
@@ -515,11 +521,11 @@ static void may_do_incsearch_highlighting(int firstc, int count, incsearch_state
                       search_flags, &sia);
     emsg_off--;
     ccline.cmdbuff[skiplen + patlen] = next_char;
-    if (curwin->w_cursor.lnum < search_first_line
-        || curwin->w_cursor.lnum > search_last_line) {
+    if (cursor->lnum < search_first_line
+        || cursor->lnum > search_last_line) {
       // match outside of address range
       found = 0;
-      curwin->w_cursor = s->search_start;
+      *cursor = s->search_start;
     }
 
     // if interrupted while searching, behave like it failed
@@ -545,13 +551,13 @@ static void may_do_incsearch_highlighting(int firstc, int count, incsearch_state
   changed_cline_bef_curs(curwin);
   update_topline(curwin);
 
-  pos_T end_pos = curwin->w_cursor;
+  pos_T end_pos = *cursor;
   if (found != 0) {
-    s->match_start = curwin->w_cursor;
-    set_search_match(&curwin->w_cursor);
+    s->match_start = *cursor;
+    set_search_match(cursor);
     validate_cursor(curwin);
-    s->match_end = curwin->w_cursor;
-    curwin->w_cursor = end_pos;
+    s->match_end = *cursor;
+    *cursor = end_pos;
     end_pos = s->match_end;
   }
 
@@ -583,10 +589,10 @@ static void may_do_incsearch_highlighting(int firstc, int count, incsearch_state
   // Leave it at the end to make CTRL-R CTRL-W work.  But not when beyond the
   // end of the pattern, e.g. for ":s/pat/".
   if (ccline.cmdbuff[skiplen + patlen] != NUL) {
-    curwin->w_cursor = s->search_start;
+    *cursor = s->search_start;
   } else if (found != 0) {
-    curwin->w_cursor = end_pos;
-    curwin->w_valid_cursor = end_pos;  // mark as valid for cmdline_show redraw
+    *cursor = end_pos;
+    primsel->valid_cursor = end_pos;  // mark as valid for cmdline_show redraw
   }
 
   msg_starthere();
@@ -615,8 +621,10 @@ static int may_add_char_to_search(int firstc, int *c, incsearch_state_T *s)
   }
   restore_last_search_pattern();
 
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   if (s->did_incsearch) {
-    curwin->w_cursor = s->match_end;
+    *cursor = s->match_end;
     *c = gchar_cursor();
     if (*c != NUL) {
       // If 'ignorecase' and 'smartcase' are set and the
@@ -636,7 +644,7 @@ static int may_add_char_to_search(int firstc, int *c, incsearch_state_T *s)
       if (utf_char2len(*c) != utfc_ptr2len(get_cursor_pos_ptr())) {
         const int save_c = *c;
         while (utf_char2len(*c) != utfc_ptr2len(get_cursor_pos_ptr())) {
-          curwin->w_cursor.col += utf_char2len(*c);
+          cursor->col += utf_char2len(*c);
           *c = gchar_cursor();
           stuffcharReadbuff(*c);
         }
@@ -656,15 +664,16 @@ static void finish_incsearch_highlighting(bool gotesc, incsearch_state_T *s,
   }
 
   s->did_incsearch = false;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   if (gotesc) {
-    curwin->w_cursor = s->save_cursor;
+    *cursor = s->save_cursor;
   } else {
     if (!equalpos(s->save_cursor, s->search_start)) {
       // put the '" mark at the original position
-      curwin->w_cursor = s->save_cursor;
+      *cursor = s->save_cursor;
       setpcmark();
     }
-    curwin->w_cursor = s->search_start;
+    *cursor = s->search_start;
   }
   restore_viewstate(curwin, &s->old_viewstate);
   highlight_match = false;
@@ -1572,6 +1581,7 @@ static int may_do_command_line_next_incsearch(int firstc, int count, incsearch_s
   ui_flush();
 
   pos_T t;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   char *pat;
   int search_flags = SEARCH_NOOF;
 
@@ -1653,7 +1663,7 @@ static int may_do_command_line_next_incsearch(int firstc, int count, incsearch_s
     }
 
     set_search_match(&s->match_end);
-    curwin->w_cursor = s->match_start;
+    *cursor = s->match_start;
     changed_cline_bef_curs(curwin);
     update_topline(curwin);
     validate_cursor(curwin);
@@ -1663,7 +1673,7 @@ static int may_do_command_line_next_incsearch(int firstc, int count, incsearch_s
     update_screen();
     highlight_match = false;
     redrawcmdline();
-    curwin->w_cursor = s->match_end;
+    *cursor = s->match_end;
   } else {
     vim_beep(kOptBoFlagError);
   }
@@ -2597,7 +2607,7 @@ static void cmdpreview_prepare(CpInfo *cpinfo)
     cp_wininfo.win = win;
 
     // Save window cursor position and viewstate
-    cp_wininfo.save_w_cursor = win->w_cursor;
+    cp_wininfo.save_w_cursor = WIN_PRIMCURS(win);
     save_viewstate(win, &cp_wininfo.save_viewstate);
 
     // Save 'cursorline' and 'cursorcolumn'
@@ -2678,7 +2688,7 @@ static void cmdpreview_restore_state(CpInfo *cpinfo)
     win_T *win = cp_wininfo.win;
 
     // Restore window cursor position and viewstate
-    win->w_cursor = cp_wininfo.save_w_cursor;
+    WIN_PRIMCURS(win) = cp_wininfo.save_w_cursor;
     restore_viewstate(win, &cp_wininfo.save_viewstate);
 
     // Restore 'cursorline' and 'cursorcolumn'
@@ -4650,8 +4660,9 @@ static int open_cmdwin(void)
   // Replace the empty last line with the current command-line and put the
   // cursor there.
   ml_replace(curbuf->b_ml.ml_line_count, ccline.cmdbuff, true);
-  curwin->w_cursor.lnum = curbuf->b_ml.ml_line_count;
-  curwin->w_cursor.col = ccline.cmdpos;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  cursor->lnum = curbuf->b_ml.ml_line_count;
+  cursor->col = ccline.cmdpos;
   changed_line_abv_curs();
   invalidate_botline_win(curwin);
   ui_ext_cmdline_hide(false);
@@ -4747,7 +4758,7 @@ static int open_cmdwin(void)
       ccline.cmdpos = 0;
       cmdwin_result = Ctrl_C;
     } else {
-      ccline.cmdpos = curwin->w_cursor.col;
+      ccline.cmdpos = cursor->col;
       // If the cursor is on the last character, it probably should be after it.
       if (ccline.cmdpos == ccline.cmdlen - 1 || ccline.cmdpos > ccline.cmdlen) {
         ccline.cmdpos = ccline.cmdlen;

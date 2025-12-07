@@ -2093,7 +2093,8 @@ CharBoundsOff utf_cp_bounds(char const *base, char const *p_in)
 // Find the next illegal byte sequence.
 void utf_find_illegal(void)
 {
-  pos_T pos = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T pos = *cursor;
   vimconv_T vimconv;
   char *tofree = NULL;
 
@@ -2105,7 +2106,7 @@ void utf_find_illegal(void)
     convert_setup(&vimconv, p_enc, curbuf->b_p_fenc);
   }
 
-  curwin->w_cursor.coladd = 0;
+  cursor->coladd = 0;
   while (true) {
     char *p = get_cursor_pos_ptr();
     if (vimconv.vc_type != CONV_NONE) {
@@ -2123,29 +2124,29 @@ void utf_find_illegal(void)
       int len = utf_ptr2len(p);
       if ((uint8_t)(*p) >= 0x80 && (len == 1 || utf_char2len(utf_ptr2char(p)) != len)) {
         if (vimconv.vc_type == CONV_NONE) {
-          curwin->w_cursor.col += (colnr_T)(p - get_cursor_pos_ptr());
+          cursor->col += (colnr_T)(p - get_cursor_pos_ptr());
         } else {
           int l;
 
           len = (int)(p - tofree);
           for (p = get_cursor_pos_ptr(); *p != NUL && len-- > 0; p += l) {
             l = utf_ptr2len(p);
-            curwin->w_cursor.col += l;
+            cursor->col += l;
           }
         }
         goto theend;
       }
       p += len;
     }
-    if (curwin->w_cursor.lnum == curbuf->b_ml.ml_line_count) {
+    if (cursor->lnum == curbuf->b_ml.ml_line_count) {
       break;
     }
-    curwin->w_cursor.lnum++;
-    curwin->w_cursor.col = 0;
+    cursor->lnum++;
+    cursor->col = 0;
   }
 
   // didn't find it: don't move and beep
-  curwin->w_cursor = pos;
+  *cursor = pos;
   beep_flush();
 
 theend:
@@ -2181,7 +2182,8 @@ bool utf_valid_string(const char *s, const char *end)
 // Thus it moves left if necessary.
 void mb_adjust_cursor(void)
 {
-  mark_mb_adjustpos(curbuf, &curwin->w_cursor);
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  mark_mb_adjustpos(curbuf, cursor);
 }
 
 /// Checks and adjusts cursor column. Not mode-dependent.
@@ -2191,31 +2193,32 @@ void mb_adjust_cursor(void)
 void mb_check_adjust_col(void *win_)
 {
   win_T *win = (win_T *)win_;
-  colnr_T oldcol = win->w_cursor.col;
+  pos_T *cursor = &WIN_PRIMCURS(win);
+  colnr_T oldcol = cursor->col;
 
   // Column 0 is always valid.
   if (oldcol != 0) {
-    char *p = ml_get_buf(win->w_buffer, win->w_cursor.lnum);
+    char *p = ml_get_buf(win->w_buffer, cursor->lnum);
     colnr_T len = (colnr_T)strlen(p);
 
     // Empty line or invalid column?
     if (len == 0 || oldcol < 0) {
-      win->w_cursor.col = 0;
+      cursor->col = 0;
     } else {
       // Cursor column too big for line?
       if (oldcol > len) {
-        win->w_cursor.col = len - 1;
+        cursor->col = len - 1;
       }
       // Move the cursor to the head byte.
-      win->w_cursor.col -= utf_head_off(p, p + win->w_cursor.col);
+      cursor->col -= utf_head_off(p, p + cursor->col);
     }
 
     // Reset `coladd` when the cursor would be on the right half of a
     // double-wide character.
-    if (win->w_cursor.coladd == 1 && p[win->w_cursor.col] != TAB
-        && vim_isprintc(utf_ptr2char(p + win->w_cursor.col))
-        && ptr2cells(p + win->w_cursor.col) > 1) {
-      win->w_cursor.coladd = 0;
+    if (cursor->coladd == 1 && p[cursor->col] != TAB
+        && vim_isprintc(utf_ptr2char(p + cursor->col))
+        && ptr2cells(p + cursor->col) > 1) {
+      cursor->coladd = 0;
     }
   }
 }

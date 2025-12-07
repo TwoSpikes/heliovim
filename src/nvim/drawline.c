@@ -197,7 +197,9 @@ static void margin_columns_win(win_T *wp, int *left_col, int *right_col)
   int width1 = wp->w_view_width - cur_col_off;
   int width2 = width1 + win_col_off2(wp);
 
-  if (saved_w_virtcol == wp->w_virtcol && prev_wp == wp
+  selection_T *primsel = &WIN_PRIMSEL(wp);
+
+  if (saved_w_virtcol == primsel->virtcol && prev_wp == wp
       && prev_width1 == width1 && prev_width2 == width2) {
     *right_col = prev_right_col;
     *left_col = prev_left_col;
@@ -207,11 +209,11 @@ static void margin_columns_win(win_T *wp, int *left_col, int *right_col)
   *left_col = 0;
   *right_col = width1;
 
-  if (wp->w_virtcol >= (colnr_T)width1 && width2 > 0) {
-    *right_col = width1 + ((wp->w_virtcol - width1) / width2 + 1) * width2;
+  if (primsel->virtcol >= (colnr_T)width1 && width2 > 0) {
+    *right_col = width1 + ((primsel->virtcol - width1) / width2 + 1) * width2;
   }
-  if (wp->w_virtcol >= (colnr_T)width1 && width2 > 0) {
-    *left_col = (wp->w_virtcol - width1) / width2 * width2 + width1;
+  if (primsel->virtcol >= (colnr_T)width1 && width2 > 0) {
+    *left_col = (primsel->virtcol - width1) / width2 * width2 + width1;
   }
 
   // cache values
@@ -220,7 +222,7 @@ static void margin_columns_win(win_T *wp, int *left_col, int *right_col)
   prev_wp = wp;
   prev_width1 = width1;
   prev_width2 = width2;
-  saved_w_virtcol = wp->w_virtcol;
+  saved_w_virtcol = primsel->virtcol;
 }
 
 /// Put a single char from an UTF-8 buffer into a line buffer.
@@ -624,11 +626,12 @@ static int get_line_number_attr(win_T *wp, winlinevars_T *wlv)
   }
 
   if (wp->w_p_rnu) {
-    if (wlv->lnum < wp->w_cursor.lnum) {
+    pos_T cursor = WIN_PRIMCURS(wp);
+    if (wlv->lnum < cursor.lnum) {
       // Use LineNrAbove
       return hl_combine_attr(win_hl_attr(wp, HLF_LNA), numhl_attr);
     }
-    if (wlv->lnum > wp->w_cursor.lnum) {
+    if (wlv->lnum > cursor.lnum) {
       // Use LineNrBelow
       return hl_combine_attr(win_hl_attr(wp, HLF_LNB), numhl_attr);
     }
@@ -1023,7 +1026,7 @@ static int get_rightmost_vcol(win_T *wp, const int *color_cols)
   int ret = 0;
 
   if (wp->w_p_cuc) {
-    ret = wp->w_virtcol;
+    ret = WIN_PRIMSEL(wp).virtcol;
   }
 
   if (color_cols) {
@@ -1060,7 +1063,12 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
   const int view_width = wp->w_view_width;
   const int view_height = wp->w_view_height;
 
-  const bool in_curline = wp == curwin && lnum == curwin->w_cursor.lnum;
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  selection_T *wp_primsel = &WIN_PRIMSEL(wp);
+  pos_T *wp_cursor = &wp_primsel->cursor;
+
+  const bool in_curline = wp == curwin && lnum == cursor->lnum;
   const bool has_fold = foldinfo.fi_level != 0 && foldinfo.fi_lines > 0;
   const bool has_foldtext = has_fold && *wp->w_p_fdt != NUL;
 
@@ -1193,14 +1201,14 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
     if (VIsual_active && wp->w_buffer == curwin->w_buffer) {
       pos_T *top, *bot;
 
-      if (ltoreq(curwin->w_cursor, VIsual)) {
+      if (ltoreq(*cursor, VIsual)) {
         // Visual is after curwin->w_cursor
-        top = &curwin->w_cursor;
+        top = cursor;
         bot = &VIsual;
       } else {
         // Visual is before curwin->w_cursor
         top = &VIsual;
-        bot = &curwin->w_cursor;
+        bot = cursor;
       }
       lnum_in_visual_area = (lnum >= top->lnum && lnum <= bot->lnum);
       if (VIsual_mode == Ctrl_V) {
@@ -1257,15 +1265,15 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
     } else if (highlight_match
                && wp == curwin
                && !has_foldtext
-               && lnum >= curwin->w_cursor.lnum
-               && lnum <= curwin->w_cursor.lnum + search_match_lines) {
-      if (lnum == curwin->w_cursor.lnum) {
-        getvcol(curwin, &(curwin->w_cursor),
+               && lnum >= cursor->lnum
+               && lnum <= cursor->lnum + search_match_lines) {
+      if (lnum == cursor->lnum) {
+        getvcol(curwin, cursor,
                 (colnr_T *)&wlv.fromcol, NULL, NULL);
       } else {
         wlv.fromcol = 0;
       }
-      if (lnum == curwin->w_cursor.lnum + search_match_lines) {
+      if (lnum == cursor->lnum + search_match_lines) {
         pos_T pos = {
           .lnum = lnum,
           .col = search_match_endcol,
@@ -1571,16 +1579,16 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
       colnr_T linecol = (colnr_T)(ptr - line);
       hlf_T spell_hlf = HLF_COUNT;
 
-      pos_T pos = wp->w_cursor;
-      wp->w_cursor.lnum = lnum;
-      wp->w_cursor.col = linecol;
+      pos_T pos = *wp_cursor;
+      wp_cursor->lnum = lnum;
+      wp_cursor->col = linecol;
       size_t len = spell_move_to(wp, FORWARD, SMT_ALL, true, &spell_hlf);
 
       // spell_move_to() may call ml_get() and make "line" invalid
       line = ml_get_buf(wp->w_buffer, lnum);
       ptr = line + linecol;
 
-      if (len == 0 || wp->w_cursor.col > linecol) {
+      if (len == 0 || wp_cursor->col > linecol) {
         // no bad word found at line start, don't check until end of a
         // word
         spell_hlf = HLF_COUNT;
@@ -1588,14 +1596,14 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
       } else {
         // bad word found, use attributes until end of word
         assert(len <= INT_MAX);
-        word_end = wp->w_cursor.col + (int)len + 1;
+        word_end = wp_cursor->col + (int)len + 1;
 
         // Turn index into actual attributes.
         if (spell_hlf != HLF_COUNT) {
           spell_attr = highlight_attr[spell_hlf];
         }
       }
-      wp->w_cursor = pos;
+      *wp_cursor = pos;
 
       // Need to restart syntax highlighting for this line.
       if (has_syntax) {
@@ -1621,18 +1629,18 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
     extra_check = true;
   }
 
-  // Correct highlighting for cursor that can't be disabled.
+  // Correct highlighting for ursor that can't be disabled.
   // Avoids having to check this for each character.
   if (wlv.fromcol >= 0) {
     if (noinvcur) {
-      if ((colnr_T)wlv.fromcol == wp->w_virtcol) {
+      if ((colnr_T)wlv.fromcol == wp_primsel->virtcol) {
         // highlighting starts at cursor, let it start just after the
         // cursor
         fromcol_prev = wlv.fromcol;
         wlv.fromcol = -1;
-      } else if ((colnr_T)wlv.fromcol < wp->w_virtcol) {
+      } else if ((colnr_T)wlv.fromcol < wp_primsel->virtcol) {
         // restart highlighting after the cursor
-        fromcol_prev = wp->w_virtcol;
+        fromcol_prev = wp_primsel->virtcol;
       }
     }
     if (wlv.fromcol >= wlv.tocol) {
@@ -1800,7 +1808,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
     }
 
     // When still displaying '$' of change command, stop at cursor.
-    if (dollar_vcol >= 0 && in_curline && wlv.vcol >= wp->w_virtcol) {
+    if (dollar_vcol >= 0 && in_curline && wlv.vcol >= wp_primsel->virtcol) {
       draw_virt_text(wp, buf, win_col_offset, &wlv.col, wlv.row);
       // don't clear anything after wlv.col
       wlv_put_linebuf(wp, &wlv, wlv.col, false, bg_attr, 0);
@@ -1839,12 +1847,12 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
           area_active = true;
         } else if (area_active
                    && (wlv.vcol == wlv.tocol
-                       || (noinvcur && wlv.vcol == wp->w_virtcol))) {
+                       || (noinvcur && wlv.vcol == wp_primsel->virtcol))) {
           area_active = false;
         }
 
         bool selected = (area_active || (area_highlighting && noinvcur
-                                         && wlv.vcol == wp->w_virtcol));
+                                         && wlv.vcol == wp_primsel->virtcol));
         // When there may be inline virtual text, position of non-inline virtual text
         // can only be decided after drawing inline virtual text with lower priority.
         if (decor_need_recheck) {
@@ -1889,7 +1897,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
         area_active = true;
       } else if (*area_attr_p != 0
                  && (wlv.vcol == wlv.tocol
-                     || (noinvcur && wlv.vcol == wp->w_virtcol))) {
+                     || (noinvcur && wlv.vcol == wp_primsel->virtcol))) {
         *area_attr_p = 0;                           // stop highlighting
         area_active = false;
       }
@@ -2267,9 +2275,9 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
             // doesn't touch the cursor.
             if (spell_hlf != HLF_COUNT
                 && (State & MODE_INSERT)
-                && wp->w_cursor.lnum == lnum
-                && wp->w_cursor.col >= (colnr_T)(prev_ptr - line)
-                && wp->w_cursor.col < (colnr_T)word_end) {
+                && wp_cursor->lnum == lnum
+                && wp_cursor->col >= (colnr_T)(prev_ptr - line)
+                && wp_cursor->col < (colnr_T)word_end) {
               spell_hlf = HLF_COUNT;
               spell_redraw_lnum = lnum;
             }
@@ -2533,8 +2541,8 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
                            && VIsual_mode != Ctrl_V
                            && wlv.col < view_width
                            && !(noinvcur
-                                && lnum == wp->w_cursor.lnum
-                                && wlv.vcol == wp->w_virtcol)))
+                                && lnum == wp_cursor->lnum
+                                && wlv.vcol == wp_primsel->virtcol)))
                    && lcs_eol_todo && lcs_eol != NUL) {
           // Display a '$' after the line or highlight an extra
           // character if the line break is included.
@@ -2597,7 +2605,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
       }
 
       if (wp->w_p_cole > 0
-          && (wp != curwin || lnum != wp->w_cursor.lnum || conceal_cursor_line(wp))
+          && (wp != curwin || lnum != wp_cursor->lnum || conceal_cursor_line(wp))
           && ((syntax_flags & HL_CONCEAL) != 0 || has_match_conc > 0 || decor_conceal > 0)
           && !(lnum_in_visual_area && vim_strchr(wp->w_p_cocu, 'v') == NULL)) {
         wlv.char_attr = conceal_attr;
@@ -2666,11 +2674,11 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
     // need to correct the cursor column, so do that at end of line.
     if (!did_wcol && wlv.filler_todo <= 0
         && in_curline && conceal_cursor_line(wp)
-        && (wlv.vcol + wlv.skip_cells >= wp->w_virtcol || mb_schar == NUL)) {
+        && (wlv.vcol + wlv.skip_cells >= wp_primsel->virtcol || mb_schar == NUL)) {
       wp->w_wcol = wlv.col - wlv.boguscols;
-      if (wlv.vcol + wlv.skip_cells < wp->w_virtcol) {
+      if (wlv.vcol + wlv.skip_cells < wp_primsel->virtcol) {
         // Cursor beyond end of the line with 'virtualedit'.
-        wp->w_wcol += wp->w_virtcol - wlv.vcol - wlv.skip_cells;
+        wp->w_wcol += wp_primsel->virtcol - wlv.vcol - wlv.skip_cells;
       }
       wp->w_wrow = wlv.row;
       did_wcol = true;
@@ -2741,7 +2749,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
           && ((area_attr != 0 && wlv.vcol == wlv.fromcol
                && (VIsual_mode != Ctrl_V
                    || lnum == VIsual.lnum
-                   || lnum == curwin->w_cursor.lnum))
+                   || lnum == primsel->cursor.lnum))
               // highlight 'hlsearch' match at end of line
               || prevcol_hl_flag)) {
         int n = 0;
@@ -2806,9 +2814,9 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
       }
 
       if (((wp->w_p_cuc
-            && wp->w_virtcol >= vcol_hlc(wlv) - eol_hl_off
-            && wp->w_virtcol < view_width * (ptrdiff_t)(wlv.row - startrow + 1) + start_vcol
-            && lnum != wp->w_cursor.lnum)
+            && wp_primsel->virtcol >= vcol_hlc(wlv) - eol_hl_off
+            && wp_primsel->virtcol < view_width * (ptrdiff_t)(wlv.row - startrow + 1) + start_vcol
+            && lnum != wp_primsel->cursor.lnum)
            || wlv.color_cols || wlv.line_attr_lowprio || wlv.line_attr
            || wlv.diff_hlf != 0 || wp->w_buffer->terminal)) {
         int rightmost_vcol = get_rightmost_vcol(wp, wlv.color_cols);
@@ -2836,8 +2844,8 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
 
           int col_attr = base_attr;
 
-          if (wp->w_p_cuc && vcol_hlc(wlv) == wp->w_virtcol
-              && lnum != wp->w_cursor.lnum) {
+          if (wp->w_p_cuc && vcol_hlc(wlv) == wp_primsel->virtcol
+              && lnum != wp_primsel->cursor.lnum) {
             col_attr = hl_combine_attr(col_attr, cuc_attr);
           } else if (wlv.color_cols && vcol_hlc(wlv) == *wlv.color_cols) {
             col_attr = hl_combine_attr(col_attr, mc_attr);
@@ -2913,8 +2921,8 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
         && search_attr == 0
         && area_attr == 0
         && wlv.filler_todo <= 0) {
-      if (wp->w_p_cuc && vcol_hlc(wlv) == wp->w_virtcol
-          && lnum != wp->w_cursor.lnum) {
+      if (wp->w_p_cuc && vcol_hlc(wlv) == wp_primsel->virtcol
+          && lnum != wp_primsel->cursor.lnum) {
         vcol_save_attr = wlv.char_attr;
         wlv.char_attr = hl_combine_attr(win_hl_attr(wp, HLF_CUC), wlv.char_attr);
       } else if (wlv.color_cols && vcol_hlc(wlv) == *wlv.color_cols) {

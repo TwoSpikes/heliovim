@@ -81,7 +81,7 @@ static const char e_search_hit_bottom_without_match_for_str[]
 //
 //  The string search functions are divided into two levels:
 //  lowest:  searchit(); uses a pos_T for starting position and found match.
-//  Highest: do_search(); uses curwin->w_cursor; calls searchit().
+//  Highest: do_search(); uses *cursor; calls searchit().
 //
 //  The last search pattern is remembered for repeating the same search.
 //  This pattern is shared between the :g, :s, ? and / commands.
@@ -1063,6 +1063,7 @@ int do_search(oparg_T *oap, int dirc, int search_delim, char *pat, size_t patlen
   char *msgbuf = NULL;
   size_t msgbuflen = 0;
   bool has_offset = false;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   searchcmdlen = 0;
 
@@ -1076,7 +1077,7 @@ int do_search(oparg_T *oap, int dirc, int search_delim, char *pat, size_t patlen
   // (there is no "if ()" around this because gcc wants them initialized)
   SearchOffset old_off = spats[0].off;
 
-  pos_T pos = curwin->w_cursor;  // Position of the last match.
+  pos_T pos = *cursor;  // Position of the last match.
                                  // Start searching at the cursor position.
 
   // Find out the direction of the search.
@@ -1413,11 +1414,11 @@ int do_search(oparg_T *oap, int dirc, int search_delim, char *pat, size_t patlen
 
     // Show [1/15] if 'S' is not in 'shortmess'.
     if (show_search_stats) {
-      cmdline_search_stat(dirc, &pos, &curwin->w_cursor,
+      cmdline_search_stat(dirc, &pos, cursor,
                           show_top_bot_msg, msgbuf, msgbuflen,
                           (count != 1 || has_offset
                            || (!(fdo_flags & kOptFdoFlagSearch)
-                               && hasFolding(curwin, curwin->w_cursor.lnum, NULL,
+                               && hasFolding(curwin, cursor->lnum, NULL,
                                              NULL))),
                           (int)p_msc,
                           SEARCH_STAT_DEF_TIMEOUT);
@@ -1447,7 +1448,7 @@ int do_search(oparg_T *oap, int dirc, int search_delim, char *pat, size_t patlen
   if (options & SEARCH_MARK) {
     setpcmark();
   }
-  curwin->w_cursor = pos;
+  *cursor = pos;
   curwin->w_set_curswant = true;
 
 end_do_search:
@@ -1538,6 +1539,7 @@ int searchc(cmdarg_T *cap, bool t_cmd)
   int dir = cap->arg;                   // true for searching forward
   int count = cap->count1;              // repeat count
   bool stop = true;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   if (c != NUL) {       // normal search: remember args for repeat
     if (!KeyStuffed) {      // don't remember when redoing
@@ -1573,7 +1575,7 @@ int searchc(cmdarg_T *cap, bool t_cmd)
   cap->oap->inclusive = dir != BACKWARD;
 
   char *p = get_cursor_line_ptr();
-  int col = curwin->w_cursor.col;
+  int col = cursor->col;
   int len = get_cursor_line_len();
 
   while (count--) {
@@ -1611,7 +1613,7 @@ int searchc(cmdarg_T *cap, bool t_cmd)
       col -= utf_head_off(p, p + col);
     }
   }
-  curwin->w_cursor.col = col;
+  cursor->col = col;
 
   return OK;
 }
@@ -1756,7 +1758,8 @@ pos_T *findmatchlimit(oparg_T *oap, int initc, int flags, int64_t maxtravel)
   bool lispcomm = false;                // inside of Lisp-style comment
   bool lisp = curbuf->b_p_lisp;         // engage Lisp-specific hacks ;)
 
-  pos = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos = *cursor;
   pos.coladd = 0;
   char *linep = ml_get(pos.lnum);     // pointer to current line
 
@@ -2055,7 +2058,7 @@ pos_T *findmatchlimit(oparg_T *oap, int initc, int flags, int64_t maxtravel)
             // started searching, or before the previously found
             // raw string start.
             if (!find_rawstring_end(linep, &pos,
-                                    count > 0 ? &match_pos : &curwin->w_cursor)) {
+                                    count > 0 ? &match_pos : cursor)) {
               count++;
               match_pos = pos;
               match_pos.col--;
@@ -2322,6 +2325,8 @@ void showmatch(int c)
   OptInt *so = curwin->w_p_so >= 0 ? &curwin->w_p_so : &p_so;
   OptInt *siso = curwin->w_p_siso >= 0 ? &curwin->w_p_siso : &p_siso;
   char *p;
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
 
   // Only show match for chars in the 'matchpairs' option.
   // 'matchpairs' is "x:y,x:y"
@@ -2363,21 +2368,21 @@ void showmatch(int c)
   }
 
   pos_T mpos = *lpos;  // save the pos, update_screen() may change it
-  pos_T save_cursor = curwin->w_cursor;
+  pos_T save_cursor = *cursor;
   OptInt save_so = *so;
   OptInt save_siso = *siso;
   // Handle "$" in 'cpo': If the ')' is typed on top of the "$",
   // stop displaying the "$".
-  if (dollar_vcol >= 0 && dollar_vcol == curwin->w_virtcol) {
+  if (dollar_vcol >= 0 && dollar_vcol == primsel->virtcol) {
     dollar_vcol = -1;
   }
-  curwin->w_virtcol++;              // do display ')' just before "$"
+  primsel->virtcol++;              // do display ')' just before "$"
 
   colnr_T save_dollar_vcol = dollar_vcol;
   int save_state = State;
   State = MODE_SHOWMATCH;
   ui_cursor_shape();                // may show different cursor shape
-  curwin->w_cursor = mpos;          // move to matching char
+  *cursor = mpos;          // move to matching char
   *so = 0;                          // don't use 'scrolloff' here
   *siso = 0;                        // don't use 'sidescrolloff' here
   show_cursor_info_later(false);
@@ -2396,7 +2401,7 @@ void showmatch(int c)
   } else if (!char_avail()) {
     os_delay((uint64_t)p_mat * 100 + 9, false);
   }
-  curwin->w_cursor = save_cursor;           // restore cursor position
+  *cursor = save_cursor;           // restore cursor position
   *so = save_so;
   *siso = save_siso;
   State = save_state;
@@ -2411,19 +2416,20 @@ int current_search(int count, bool forward)
 {
   bool old_p_ws = p_ws;
   pos_T save_VIsual = VIsual;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   // Correct cursor when 'selection' is exclusive
-  if (VIsual_active && *p_sel == 'e' && lt(VIsual, curwin->w_cursor)) {
+  if (VIsual_active && *p_sel == 'e' && lt(VIsual, *cursor)) {
     dec_cursor();
   }
 
   // When searching forward and the cursor is at the start of the Visual
   // area, skip the first search backward, otherwise it doesn't move.
   const bool skip_first_backward = forward && VIsual_active
-                                   && lt(curwin->w_cursor, VIsual);
+                                   && lt(*cursor, VIsual);
 
-  pos_T pos = curwin->w_cursor;       // position after the pattern
-  pos_T orig_pos = curwin->w_cursor;  // position of the cursor at beginning
+  pos_T pos = *cursor;       // position after the pattern
+  pos_T orig_pos = *cursor;  // position of the cursor at beginning
   if (VIsual_active) {
     // Searching further will extend the match.
     if (forward) {
@@ -2435,7 +2441,7 @@ int current_search(int count, bool forward)
 
   // Is the pattern is zero-width?, this time, don't care about the direction
   int zero_width = is_zero_width(spats[last_idx].pat, spats[last_idx].patlen,
-                                 true, &curwin->w_cursor, FORWARD);
+                                 true, cursor, FORWARD);
   if (zero_width == -1) {
     return FAIL;  // pattern not found
   }
@@ -2481,7 +2487,7 @@ int current_search(int count, bool forward)
     // except when Visual mode is active, so that extending the visual
     // selection works.
     if (i == 1 && !result) {  // not found, abort
-      curwin->w_cursor = orig_pos;
+      *cursor = orig_pos;
       if (VIsual_active) {
         VIsual = save_VIsual;
       }
@@ -2504,26 +2510,26 @@ int current_search(int count, bool forward)
   }
 
   // put the cursor after the match
-  curwin->w_cursor = end_pos;
+  *cursor = end_pos;
   if (lt(VIsual, end_pos) && forward) {
     if (skip_first_backward) {
       // put the cursor on the start of the match
-      curwin->w_cursor = pos;
+      *cursor = pos;
     } else {
       // put the cursor on last character of match
       dec_cursor();
     }
-  } else if (VIsual_active && lt(curwin->w_cursor, VIsual) && forward) {
-    curwin->w_cursor = pos;   // put the cursor on the start of the match
+  } else if (VIsual_active && lt(*cursor, VIsual) && forward) {
+    *cursor = pos;   // put the cursor on the start of the match
   }
   VIsual_active = true;
   VIsual_mode = 'v';
 
   if (*p_sel == 'e') {
     // Correction for exclusive selection depends on the direction.
-    if (forward && ltoreq(VIsual, curwin->w_cursor)) {
+    if (forward && ltoreq(VIsual, *cursor)) {
       inc_cursor();
-    } else if (!forward && ltoreq(curwin->w_cursor, VIsual)) {
+    } else if (!forward && ltoreq(*cursor, VIsual)) {
       inc(&VIsual);
     }
   }
@@ -2789,7 +2795,8 @@ static void update_search_stat(int dirc, pos_T *pos, pos_T *cursor_pos, searchst
 // "searchcount()" function
 void f_searchcount(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 {
-  pos_T pos = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T pos = *cursor;
   char *pattern = NULL;
   int maxcount = (int)p_msc;
   int timeout = SEARCH_STAT_DEF_TIMEOUT;
@@ -3241,10 +3248,11 @@ search_line:
       }
     }
     if (matched) {
+      pos_T *cursor = &WIN_PRIMCURS(curwin);
       if (action == ACTION_EXPAND) {
         bool cont_s_ipos = false;
 
-        if (depth == -1 && lnum == curwin->w_cursor.lnum) {
+        if (depth == -1 && lnum == cursor->lnum) {
           break;
         }
         found = true;
@@ -3351,7 +3359,7 @@ search_line:
         }
       } else if (--count <= 0) {
         found = true;
-        if (depth == -1 && lnum == curwin->w_cursor.lnum
+        if (depth == -1 && lnum == cursor->lnum
             && l_g_do_tagpreview == 0) {
           emsg(_("E387: Match is on current line"));
         } else if (action == ACTION_SHOW) {
@@ -3384,7 +3392,7 @@ search_line:
             } else {
               setpcmark();
             }
-            curwin->w_cursor.lnum = lnum;
+            cursor->lnum = lnum;
             check_cursor(curwin);
           } else {
             if (!GETFILE_SUCCESS(getfile(0, files[depth].name, NULL, true,
@@ -3393,11 +3401,11 @@ search_line:
             }
             // autocommands may have changed the lnum, we don't
             // want that here
-            curwin->w_cursor.lnum = files[depth].lnum;
+            cursor->lnum = files[depth].lnum;
           }
         }
         if (action != ACTION_SHOW) {
-          curwin->w_cursor.col = (colnr_T)(startp - line);
+          cursor->col = (colnr_T)(startp - line);
           curwin->w_set_curswant = true;
         }
 

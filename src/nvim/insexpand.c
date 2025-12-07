@@ -1088,7 +1088,7 @@ static void ins_compl_insert_bytes(char *p, int len)
   }
   assert(len >= 0);
   ins_bytes_len(p, (size_t)len);
-  compl_ins_end_col = curwin->w_cursor.col;
+  compl_ins_end_col = WIN_PRIMCURS(curwin).col;
 }
 
 /// Get current completion leader
@@ -1123,9 +1123,10 @@ int ins_compl_col_range_attr(linenr_T lnum, int col)
   }
 
   // Multiple lines
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   if ((lnum == compl_lnum && col >= start_col && col < MAXCOL)
-      || (lnum > compl_lnum && lnum < curwin->w_cursor.lnum)
-      || (lnum == curwin->w_cursor.lnum && col <= compl_ins_end_col)) {
+      || (lnum > compl_lnum && lnum < cursor->lnum)
+      || (lnum == cursor->lnum && col <= compl_ins_end_col)) {
     return attr;
   }
 
@@ -1147,7 +1148,7 @@ bool ins_compl_lnum_in_range(linenr_T lnum)
   if (!ins_compl_has_multiple()) {
     return false;
   }
-  return lnum >= compl_lnum && lnum <= curwin->w_cursor.lnum;
+  return lnum >= compl_lnum && lnum <= WIN_PRIMCURS(curwin).lnum;
 }
 
 /// Reduce the longest common string for match "match".
@@ -1157,7 +1158,7 @@ static void ins_compl_longest_match(compl_T *match)
     // First match, use it as a whole.
     compl_leader = copy_string(match->cp_str, NULL);
 
-    bool had_match = (curwin->w_cursor.col > compl_col);
+    bool had_match = (WIN_PRIMCURS(curwin).col > compl_col);
     ins_compl_longest_insert(compl_leader.data);
 
     // When the match isn't there (to avoid matching itself) remove it
@@ -1191,7 +1192,7 @@ static void ins_compl_longest_match(compl_T *match)
     *p = NUL;
     compl_leader.size = (size_t)(p - compl_leader.data);
 
-    bool had_match = (curwin->w_cursor.col > compl_col);
+    bool had_match = (WIN_PRIMCURS(curwin).col > compl_col);
     ins_compl_longest_insert(compl_leader.data);
 
     // When the match isn't there (to avoid matching itself) remove it
@@ -1255,7 +1256,7 @@ bool ins_compl_has_shown_match(void)
 bool ins_compl_long_shown_match(void)
 {
   return compl_shown_match != NULL && compl_shown_match->cp_str.data != NULL
-         && (colnr_T)compl_shown_match->cp_str.size > curwin->w_cursor.col - compl_col;
+         && (colnr_T)compl_shown_match->cp_str.size > WIN_PRIMCURS(curwin).col - compl_col;
 }
 
 /// Get the local or global value of 'completeopt' flags.
@@ -1399,7 +1400,7 @@ static void prepend_startcol_text(String *dest, String *src, int startcol)
   dest->size = (size_t)new_length;
   dest->data = xmalloc((size_t)new_length + 1);  // +1 for NUL
 
-  char *line = ml_get(curwin->w_cursor.lnum);
+  char *line = ml_get(WIN_PRIMCURS(curwin).lnum);
 
   memmove(dest->data, line + startcol, (size_t)prepend_len);
   memmove(dest->data + prepend_len, src->data, src->size);
@@ -1712,11 +1713,12 @@ void ins_compl_show_pum(void)
 
   // Compute the screen column of the start of the completed text.
   // Use the cursor to get all wrapping and other settings right.
-  const colnr_T col = curwin->w_cursor.col;
-  curwin->w_cursor.col = compl_col;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  const colnr_T col = cursor->col;
+  cursor->col = compl_col;
   compl_selected_item = cur;
   pum_display(compl_match_array, compl_match_arraysize, cur, array_changed, 0);
-  curwin->w_cursor.col = col;
+  cursor->col = col;
 
   // After adding leader, set the current match to shown match.
   if (compl_started && compl_curr_match != compl_shown_match) {
@@ -2158,7 +2160,7 @@ bool ins_compl_preinsert_effect(void)
     return false;
   }
 
-  return curwin->w_cursor.col < compl_ins_end_col;
+  return WIN_PRIMCURS(curwin).col < compl_ins_end_col;
 }
 
 /// Delete one character before the cursor and show the subset of the matches
@@ -2172,7 +2174,8 @@ int ins_compl_bs(void)
   }
 
   char *line = get_cursor_line_ptr();
-  char *p = line + curwin->w_cursor.col;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  char *p = line + cursor->col;
   MB_PTR_BACK(line, p);
   ptrdiff_t p_off = p - line;
 
@@ -2189,7 +2192,7 @@ int ins_compl_bs(void)
 
   // Deleted more than what was used to find matches or didn't finish
   // finding all matches: need to look for matches all over again.
-  if (curwin->w_cursor.col <= compl_col + compl_length
+  if (cursor->col <= compl_col + compl_length
       || ins_compl_need_restart()) {
     ins_compl_restart();
   }
@@ -2325,7 +2328,7 @@ static void ins_compl_new_leader(void)
 /// the cursor column.  Making sure it never goes below zero.
 static int get_compl_len(void)
 {
-  int off = (int)curwin->w_cursor.col - (int)compl_col;
+  int off = (int)WIN_PRIMCURS(curwin).col - (int)compl_col;
   return MAX(0, off);
 }
 
@@ -2359,7 +2362,7 @@ void ins_compl_addleader(int c)
 
   API_CLEAR_STRING(compl_leader);
   compl_leader = cbuf_to_string(get_cursor_line_ptr() + compl_col,
-                                (size_t)(curwin->w_cursor.col - compl_col));
+                                (size_t)(WIN_PRIMCURS(curwin).col - compl_col));
   ins_compl_new_leader();
 }
 
@@ -2403,7 +2406,7 @@ static void ins_compl_set_original_text(char *str, size_t len)
 /// matches.
 void ins_compl_addfrommatch(void)
 {
-  int len = (int)curwin->w_cursor.col - (int)compl_col;
+  int len = (int)WIN_PRIMCURS(curwin).col - (int)compl_col;
   assert(compl_shown_match != NULL);
   char *p = compl_shown_match->cp_str.data;
   if ((int)compl_shown_match->cp_str.size <= len) {   // the match is too short
@@ -2591,6 +2594,7 @@ static bool ins_compl_stop(const int c, const int prev_mode, bool retval)
 
   // When completing whole lines: fix indent for 'cindent'.
   // Otherwise, break line if it's too long.
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   if (compl_cont_mode == CTRL_X_WHOLE_LINE) {
     // re-indent the current line
     if (want_cindent) {
@@ -2598,7 +2602,7 @@ static bool ins_compl_stop(const int c, const int prev_mode, bool retval)
       want_cindent = false;                 // don't do it again
     }
   } else {
-    const int prev_col = curwin->w_cursor.col;
+    const int prev_col = cursor->col;
 
     // put the cursor on the last char, for 'tw' formatting
     if (prev_col > 0) {
@@ -2611,7 +2615,7 @@ static bool ins_compl_stop(const int c, const int prev_mode, bool retval)
     }
 
     if (prev_col > 0
-        && get_cursor_line_ptr()[curwin->w_cursor.col] != NUL) {
+        && get_cursor_line_ptr()[cursor->col] != NUL) {
       inc_cursor();
     }
   }
@@ -2626,7 +2630,7 @@ static bool ins_compl_stop(const int c, const int prev_mode, bool retval)
     word = xstrdup(compl_shown_match->cp_str.data);
     retval = true;
     // May need to remove ComplMatchIns highlight.
-    redrawWinline(curwin, curwin->w_cursor.lnum);
+    redrawWinline(curwin, cursor->lnum);
   }
 
   // CTRL-E means completion is Ended, go back to the typed text.
@@ -3161,6 +3165,7 @@ static void expand_by_function(int type, char *base, Callback *cb)
   dict_T *matchdict = NULL;
   typval_T rettv;
   const int save_State = State;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   assert(curbuf != NULL);
 
@@ -3181,7 +3186,7 @@ static void expand_by_function(int type, char *base, Callback *cb)
   args[0].vval.v_number = 0;
   args[1].vval.v_string = base != NULL ? base : "";
 
-  pos_T pos = curwin->w_cursor;
+  pos_T pos = *cursor;
   // Lock the text to avoid weird things from happening.  Also disallow
   // switching to another window, it should not be needed and may end up in
   // Insert mode in another buffer.
@@ -3206,10 +3211,10 @@ static void expand_by_function(int type, char *base, Callback *cb)
   }
   textlock--;
 
-  curwin->w_cursor = pos;  // restore the cursor position
+  *cursor = pos;  // restore the cursor position
   check_cursor(curwin);  // make sure cursor position is valid, just in case
   validate_cursor(curwin);
-  if (!equalpos(curwin->w_cursor, pos)) {
+  if (!equalpos(*cursor, pos)) {
     emsg(_(e_compldel));
     goto theend;
   }
@@ -3345,7 +3350,8 @@ static void ins_compl_add_dict(dict_T *dict)
 /// completion is cancelled, or the original text is completed.
 static void save_orig_extmarks(void)
 {
-  extmark_splice_delete(curbuf, curwin->w_cursor.lnum - 1, compl_col, curwin->w_cursor.lnum - 1,
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  extmark_splice_delete(curbuf, cursor->lnum - 1, compl_col, cursor->lnum - 1,
                         compl_col + compl_length, &compl_orig_extmarks, true, kExtmarkUndo);
 }
 
@@ -3378,12 +3384,13 @@ static void set_completion(colnr_T startcol, list_T *list)
   compl_get_longest = compl_longest;
 
   compl_direction = FORWARD;
-  if (startcol > curwin->w_cursor.col) {
-    startcol = curwin->w_cursor.col;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  if (startcol > cursor->col) {
+    startcol = cursor->col;
   }
   compl_col = startcol;
-  compl_lnum = curwin->w_cursor.lnum;
-  compl_length = curwin->w_cursor.col - startcol;
+  compl_lnum = cursor->lnum;
+  compl_length = cursor->col - startcol;
   // compl_pattern doesn't need to be set
   compl_orig_text = cbuf_to_string(get_cursor_line_ptr() + compl_col,
                                    (size_t)compl_length);
@@ -3597,9 +3604,10 @@ static void get_complete_info(list_T *what_list, dict_T *retdict)
 
   if (ret == OK && (what_flag & CI_WHAT_PREINSERTED_TEXT)) {
     char *line = get_cursor_line_ptr();
-    int len = compl_ins_end_col - curwin->w_cursor.col;
+    pos_T *cursor = &WIN_PRIMCURS(curwin);
+    int len = compl_ins_end_col - cursor->col;
     ret = tv_dict_add_str_len(retdict, S_LEN("preinserted_text"),
-                              len > 0 ? line + curwin->w_cursor.col : "", MAX(len, 0));
+                              len > 0 ? line + cursor->col : "", MAX(len, 0));
   }
 
   if (ret == OK && (what_flag & (CI_WHAT_ITEMS|CI_WHAT_SELECTED
@@ -4338,7 +4346,7 @@ static int get_next_default_completion(ins_compl_next_state_T *st, pos_T *start_
     }
 
     if (is_nearest_active() && in_curbuf) {
-      score = st->cur_match_pos->lnum - curwin->w_cursor.lnum;
+      score = st->cur_match_pos->lnum - WIN_PRIMCURS(curwin).lnum;
       if (score < 0) {
         score = -score;
       }
@@ -4595,6 +4603,8 @@ static void prepare_cpt_compl_funcs(void)
   char *cpt = xstrdup(curbuf->b_p_cpt);
   strip_caret_numbers_in_place(cpt);
 
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   int idx = 0;
   for (char *p = cpt; *p;) {
     while (*p == ',' || *p == ' ') {  // Skip delimiters
@@ -4607,14 +4617,14 @@ static void prepare_cpt_compl_funcs(void)
     Callback *cb = get_callback_if_cpt_func(p, idx);
     if (cb) {
       int startcol;
-      if (get_userdefined_compl_info(curwin->w_cursor.col, cb, &startcol) == FAIL) {
+      if (get_userdefined_compl_info(cursor->col, cb, &startcol) == FAIL) {
         if (startcol == -3) {
           cpt_sources_array[idx].cs_refresh_always = false;
         } else {
           startcol = -2;
         }
-      } else if (startcol < 0 || startcol > curwin->w_cursor.col) {
-        startcol = curwin->w_cursor.col;
+      } else if (startcol < 0 || startcol > cursor->col) {
+        startcol = cursor->col;
       }
       cpt_sources_array[idx].cs_startcol = startcol;
     } else {
@@ -4897,36 +4907,38 @@ void ins_compl_delete(bool new_leader)
     orig_col = (int)(orig - compl_orig_text.data);
   }
 
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   // In insert mode: Delete the typed part.
   // In replace mode: Put the old characters back, if any.
   int col = compl_col + (compl_status_adding() ? compl_length : orig_col);
 
   if (ins_compl_preinsert_effect()) {
     col += (int)ins_compl_leader_len();
-    curwin->w_cursor.col = compl_ins_end_col;
+    cursor->col = compl_ins_end_col;
   }
 
   String remaining = STRING_INIT;
-  if (curwin->w_cursor.lnum > compl_lnum) {
-    if (curwin->w_cursor.col < get_cursor_line_len()) {
+  if (cursor->lnum > compl_lnum) {
+    if (cursor->col < get_cursor_line_len()) {
       remaining = cbuf_to_string(get_cursor_pos_ptr(), (size_t)get_cursor_pos_len());
     }
 
-    while (curwin->w_cursor.lnum > compl_lnum) {
-      if (ml_delete(curwin->w_cursor.lnum) == FAIL) {
+    while (cursor->lnum > compl_lnum) {
+      if (ml_delete(cursor->lnum) == FAIL) {
         if (remaining.data) {
           xfree(remaining.data);
         }
         return;
       }
-      deleted_lines_mark(curwin->w_cursor.lnum, 1);
-      curwin->w_cursor.lnum--;
+      deleted_lines_mark(cursor->lnum, 1);
+      cursor->lnum--;
     }
     // move cursor to end of line
-    curwin->w_cursor.col = get_cursor_line_len();
+    cursor->col = get_cursor_line_len();
   }
 
-  if ((int)curwin->w_cursor.col > col) {
+  if ((int)cursor->col > col) {
     if (stop_arrow() == FAIL) {
       if (remaining.data) {
         xfree(remaining.data);
@@ -4934,13 +4946,13 @@ void ins_compl_delete(bool new_leader)
       return;
     }
     backspace_until_column(col);
-    compl_ins_end_col = curwin->w_cursor.col;
+    compl_ins_end_col = cursor->col;
   }
 
   if (remaining.data != NULL) {
-    orig_col = curwin->w_cursor.col;
+    orig_col = cursor->col;
     ins_str(remaining.data, remaining.size);
-    curwin->w_cursor.col = orig_col;
+    cursor->col = orig_col;
     xfree(remaining.data);
   }
 
@@ -4977,7 +4989,7 @@ static void ins_compl_expand_multiple(char *str)
     ins_char_bytes(start, (size_t)(curr - start));
   }
 
-  compl_ins_end_col = curwin->w_cursor.col;
+  compl_ins_end_col = WIN_PRIMCURS(curwin).col;
 }
 
 /// Find the longest common prefix among the current completion matches.
@@ -5063,7 +5075,7 @@ static char *find_common_prefix(size_t *prefix_len, bool curbuf_only)
     // after the cursor.
     if (len == (int)strlen(first)) {
       char *line = get_cursor_line_ptr();
-      char *p = line + curwin->w_cursor.col;
+      char *p = line + WIN_PRIMCURS(curwin).col;
       if (p && !ascii_iswhite_or_nul(*p)) {
         char *end = find_word_end(p);
         int text_len = (int)(end - p);
@@ -5128,7 +5140,7 @@ void ins_compl_insert(bool move_cursor, bool insert_prefix)
       ins_compl_insert_bytes(cp_str + compl_len,
                              insert_prefix ? (int)cp_str_len - compl_len : -1);
       if ((preinsert || insert_prefix) && move_cursor) {
-        curwin->w_cursor.col -= (colnr_T)(cp_str_len - leader_len);
+        WIN_PRIMCURS(curwin).col -= (colnr_T)(cp_str_len - leader_len);
       }
     }
   }
@@ -5755,7 +5767,7 @@ static void set_compl_globals(int startcol, colnr_T curs_col, bool is_cpt_compl)
     }
 
     // Re-obtain line in case it has changed
-    char *line = ml_get(curwin->w_cursor.lnum);
+    char *line = ml_get(WIN_PRIMCURS(curwin).lnum);
     int len = curs_col - startcol;
 
     compl_pattern = cbuf_to_string(line + startcol, (size_t)len);
@@ -5775,6 +5787,7 @@ static int get_userdefined_compl_info(colnr_T curs_col, Callback *cb, int *start
   // Call user defined function 'completefunc' with "a:findstart"
   // set to 1 to obtain the length of text to use for completion.
   const int save_State = State;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   const bool is_cpt_function = (cb != NULL);
   if (!is_cpt_function) {
@@ -5795,16 +5808,16 @@ static int get_userdefined_compl_info(colnr_T curs_col, Callback *cb, int *start
   args[0].vval.v_number = 1;
   args[1].vval.v_string = "";
 
-  pos_T pos = curwin->w_cursor;
+  pos_T pos = *cursor;
   textlock++;
   colnr_T col = (colnr_T)callback_call_retnr(cb, 2, args);
   textlock--;
 
   State = save_State;
-  curwin->w_cursor = pos;  // restore the cursor position
+  *cursor = pos;  // restore the cursor position
   check_cursor(curwin);  // make sure cursor position is valid, just in case
   validate_cursor(curwin);
-  if (!equalpos(curwin->w_cursor, pos)) {
+  if (!equalpos(*cursor, pos)) {
     emsg(_(e_compldel));
     return FAIL;
   }
@@ -5862,7 +5875,7 @@ static int get_spell_compl_info(int startcol, colnr_T curs_col)
     compl_length = (int)curs_col - compl_col;
   }
   // Need to obtain "line" again, it may have become invalid.
-  char *line = ml_get(curwin->w_cursor.lnum);
+  char *line = ml_get(WIN_PRIMCURS(curwin).lnum);
   compl_pattern = cbuf_to_string(line + compl_col, (size_t)compl_length);
 
   return OK;
@@ -5921,19 +5934,21 @@ static int compl_get_info(char *line, int startcol, colnr_T curs_col, bool *line
 /// at the beginning of the line has been inserted, we'll look for that.
 static void ins_compl_continue_search(char *line)
 {
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   // it is a continued search
   compl_cont_status &= ~CONT_INTRPT;  // remove INTRPT
   if (ctrl_x_mode_normal()
       || ctrl_x_mode_path_patterns()
       || ctrl_x_mode_path_defines()) {
-    if (compl_startpos.lnum != curwin->w_cursor.lnum) {
+    if (compl_startpos.lnum != cursor->lnum) {
       // line (probably) wrapped, set compl_startpos to the
       // first non_blank in the line, if it is not a wordchar
       // include it to get a better pattern, but then we don't
       // want the "\\<" prefix, check it below.
       compl_col = (colnr_T)getwhitecols(line);
       compl_startpos.col = compl_col;
-      compl_startpos.lnum = curwin->w_cursor.lnum;
+      compl_startpos.lnum = cursor->lnum;
       compl_cont_status &= ~CONT_SOL;  // clear SOL if present
     } else {
       // S_IPOS was set when we inserted a word that was at the
@@ -5945,14 +5960,14 @@ static void ins_compl_continue_search(char *line)
       }
       compl_col = compl_startpos.col;
     }
-    compl_length = curwin->w_cursor.col - (int)compl_col;
+    compl_length = cursor->col - (int)compl_col;
     // IObuff is used to add a "word from the next line" would we
     // have enough space?  just being paranoid
 #define MIN_SPACE 75
     if (compl_length > (IOSIZE - MIN_SPACE)) {
       compl_cont_status &= ~CONT_SOL;
       compl_length = (IOSIZE - MIN_SPACE);
-      compl_col = curwin->w_cursor.col - compl_length;
+      compl_col = cursor->col - compl_length;
     }
     compl_cont_status |= CONT_ADDING | CONT_N_ADDS;
     if (compl_length < 1) {
@@ -5969,6 +5984,7 @@ static void ins_compl_continue_search(char *line)
 static int ins_compl_start(void)
 {
   const bool save_did_ai = did_ai;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   // First time we hit ^N or ^P (in a row, I mean)
 
@@ -5981,10 +5997,10 @@ static int ins_compl_start(void)
     return FAIL;
   }
 
-  char *line = ml_get(curwin->w_cursor.lnum);
-  colnr_T curs_col = curwin->w_cursor.col;
+  char *line = ml_get(cursor->lnum);
+  colnr_T curs_col = cursor->col;
   compl_pending = 0;
-  compl_lnum = curwin->w_cursor.lnum;
+  compl_lnum = cursor->lnum;
 
   if ((compl_cont_status & CONT_INTRPT) == CONT_INTRPT
       && compl_cont_mode == ctrl_x_mode) {
@@ -6003,7 +6019,7 @@ static int ins_compl_start(void)
       compl_cont_status = 0;
     }
     compl_cont_status |= CONT_N_ADDS;
-    compl_startpos = curwin->w_cursor;
+    compl_startpos = *cursor;
     startcol = (int)curs_col;
     compl_col = 0;
   }
@@ -6020,7 +6036,7 @@ static int ins_compl_start(void)
   }
   // If "line" was changed while getting completion info get it again.
   if (line_invalid) {
-    line = ml_get(curwin->w_cursor.lnum);
+    line = ml_get(cursor->lnum);
   }
 
   if (compl_status_adding()) {
@@ -6032,13 +6048,13 @@ static int ins_compl_start(void)
       char *old = curbuf->b_p_com;
 
       curbuf->b_p_com = "";
-      compl_startpos.lnum = curwin->w_cursor.lnum;
+      compl_startpos.lnum = cursor->lnum;
       compl_startpos.col = compl_col;
       ins_eol('\r');
       curbuf->b_p_com = old;
       compl_length = 0;
-      compl_col = curwin->w_cursor.col;
-      compl_lnum = curwin->w_cursor.lnum;
+      compl_col = cursor->col;
+      compl_lnum = cursor->lnum;
     }
   } else {
     edit_submode_pre = NULL;
@@ -6367,9 +6383,10 @@ void free_insexpand_stuff(void)
 /// spelled word, if there is one.
 static void spell_back_to_badword(void)
 {
-  pos_T tpos = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T tpos = *cursor;
   spell_bad_len = spell_move_to(curwin, BACKWARD, SMT_ALL, true, NULL);
-  if (curwin->w_cursor.col != tpos.col) {
+  if (cursor->col != tpos.col) {
     start_arrow(&tpos);
   }
 }
@@ -6511,12 +6528,13 @@ static void get_cpt_func_completion_matches(Callback *cb)
 {
   cpt_source_T *cpt_src = &cpt_sources_array[cpt_sources_index];
   int startcol = cpt_src->cs_startcol;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   if (startcol == -2 || startcol == -3) {
     return;
   }
 
-  set_compl_globals(startcol, curwin->w_cursor.col, true);
+  set_compl_globals(startcol, cursor->col, true);
 
   // Insert the leader string (previously removed) before expansion.
   // This prevents flicker when `func` (e.g. an LSP client) is slow and
@@ -6544,6 +6562,7 @@ static void cpt_compl_refresh(void)
   // Make a copy of 'cpt' in case the buffer gets wiped out
   char *cpt = xstrdup(curbuf->b_p_cpt);
   strip_caret_numbers_in_place(cpt);
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   cpt_sources_index = 0;
   for (char *p = cpt; *p;) {
@@ -6559,15 +6578,15 @@ static void cpt_compl_refresh(void)
       if (cb) {
         remove_old_matches();
         int startcol;
-        int ret = get_userdefined_compl_info(curwin->w_cursor.col, cb, &startcol);
+        int ret = get_userdefined_compl_info(cursor->col, cb, &startcol);
         if (ret == FAIL) {
           if (startcol == -3) {
             cpt_sources_array[cpt_sources_index].cs_refresh_always = false;
           } else {
             startcol = -2;
           }
-        } else if (startcol < 0 || startcol > curwin->w_cursor.col) {
-          startcol = curwin->w_cursor.col;
+        } else if (startcol < 0 || startcol > cursor->col) {
+          startcol = cursor->col;
         }
         cpt_sources_array[cpt_sources_index].cs_startcol = startcol;
         if (ret == OK) {

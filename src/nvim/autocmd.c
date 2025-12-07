@@ -1060,7 +1060,7 @@ int autocmd_register(int64_t id, event_T event, const char *pat, int patlen, int
     if ((event == EVENT_CURSORMOVED && !has_event(EVENT_CURSORMOVED))
         || (event == EVENT_CURSORMOVEDI && !has_event(EVENT_CURSORMOVEDI))) {
       last_cursormoved_win = curwin;
-      last_cursormoved = curwin->w_cursor;
+      last_cursormoved = WIN_PRIMCURS(curwin);
     }
 
     // Initialize the fields checked by the WinScrolled and

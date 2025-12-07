@@ -1443,6 +1443,8 @@ static bool reg_match_visual(void)
   linenr_T lnum;
   colnr_T col;
   win_T *wp = rex.reg_win == NULL ? curwin : rex.reg_win;
+  selection_T *primsel = &WIN_PRIMSEL(wp);
+  pos_T *cursor = &primsel->cursor;
   int mode;
   colnr_T start, end;
   colnr_T start2, end2;
@@ -1454,15 +1456,15 @@ static bool reg_match_visual(void)
   }
 
   if (VIsual_active) {
-    if (lt(VIsual, wp->w_cursor)) {
+    if (lt(VIsual, *cursor)) {
       top = VIsual;
-      bot = wp->w_cursor;
+      bot = *cursor;
     } else {
-      top = wp->w_cursor;
+      top = *cursor;
       bot = VIsual;
     }
     mode = VIsual_mode;
-    curswant = wp->w_curswant;
+    curswant = primsel->curswant;
   } else {
     if (lt(curbuf->b_visual.vi_start, curbuf->b_visual.vi_end)) {
       top = curbuf->b_visual.vi_start;
@@ -4251,6 +4253,7 @@ static uint8_t *regatom(int *flagp)
   uint8_t *p;
   int extra = 0;
   int save_prev_at_start = prev_at_start;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   *flagp = WORST;               // Tentatively.
 
@@ -4663,7 +4666,7 @@ static uint8_t *regatom(int *flagp)
           }
           if (c == 'l') {
             if (cur) {
-              n = (uint32_t)curwin->w_cursor.lnum;
+              n = (uint32_t)cursor->lnum;
             }
             ret = regnode(RE_LNUM);
             if (save_prev_at_start) {
@@ -4671,14 +4674,14 @@ static uint8_t *regatom(int *flagp)
             }
           } else if (c == 'c') {
             if (cur) {
-              n = (uint32_t)curwin->w_cursor.col;
+              n = (uint32_t)cursor->col;
               n++;
             }
             ret = regnode(RE_COL);
           } else {
             if (cur) {
               colnr_T vcol = 0;
-              getvvcol(curwin, &curwin->w_cursor, NULL, NULL, &vcol);
+              getvvcol(curwin, cursor, NULL, NULL, &vcol);
               n = (uint32_t)(++vcol);
             }
             ret = regnode(RE_VCOL);
@@ -6120,6 +6123,7 @@ static bool regmatch(uint8_t *scan, const proftime_T *tm, int *timed_out)
   int no;
   int status;                   // one of the RA_ values:
   int tm_count = 0;
+  pos_T *cursor = &WIN_PRIMCURS(rex.reg_win);
 
   // Make "regstack" and "backpos" empty.  They are allocated and freed in
   // bt_regexec_both() to reduce malloc()/free() calls.
@@ -6224,9 +6228,9 @@ static bool regmatch(uint8_t *scan, const proftime_T *tm, int *timed_out)
           // Check if the buffer is in a window and compare the
           // rex.reg_win->w_cursor position to the match position.
           if (rex.reg_win == NULL
-              || (rex.lnum + rex.reg_firstlnum != rex.reg_win->w_cursor.lnum)
+              || (rex.lnum + rex.reg_firstlnum != cursor->lnum)
               || ((colnr_T)(rex.input - rex.line) !=
-                  rex.reg_win->w_cursor.col)) {
+                  cursor->col)) {
             status = RA_NOMATCH;
           }
           break;
@@ -9995,6 +9999,7 @@ static int nfa_regatom(void)
   int negated;
   int startc = -1;
   int save_prev_at_start = prev_at_start;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   c = getchr();
   switch (c) {
@@ -10359,7 +10364,7 @@ static int nfa_regatom(void)
         }
         if (c == 'l') {
           if (cur) {
-            n = curwin->w_cursor.lnum;
+            n = cursor->lnum;
           }
           // \%{n}l  \%{n}<l  \%{n}>l
           EMIT(cmp == '<' ? NFA_LNUM_LT
@@ -10369,7 +10374,7 @@ static int nfa_regatom(void)
           }
         } else if (c == 'c') {
           if (cur) {
-            n = curwin->w_cursor.col;
+            n = cursor->col;
             n++;
           }
           // \%{n}c  \%{n}<c  \%{n}>c
@@ -10378,7 +10383,7 @@ static int nfa_regatom(void)
         } else {
           if (cur) {
             colnr_T vcol = 0;
-            getvvcol(curwin, &curwin->w_cursor, NULL, NULL, &vcol);
+            getvvcol(curwin, cursor, NULL, NULL, &vcol);
             n = ++vcol;
           }
           // \%{n}v  \%{n}<v  \%{n}>v
@@ -14119,6 +14124,7 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start, regsubs_T *subm
   int add_off = 0;
   int toplevel = start->c == NFA_MOPEN;
   regsubs_T *r;
+  pos_T *cursor = rex.reg_win?&WIN_PRIMCURS(rex.reg_win):NULL;
   // Some patterns may take a long time to match, especially when using
   // recursive_regmatch(). Allow interrupting them with CTRL-C.
   reg_breakcheck();
@@ -15209,8 +15215,8 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start, regsubs_T *subm
 
       case NFA_CURSOR:
         result = rex.reg_win != NULL
-                 && (rex.lnum + rex.reg_firstlnum == rex.reg_win->w_cursor.lnum)
-                 && ((colnr_T)(rex.input - rex.line) == rex.reg_win->w_cursor.col);
+                 && (rex.lnum + rex.reg_firstlnum == cursor->lnum)
+                 && ((colnr_T)(rex.input - rex.line) == cursor->col);
         if (result) {
           add_here = true;
           add_state = t->state->out;

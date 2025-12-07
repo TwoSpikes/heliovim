@@ -1793,10 +1793,11 @@ failed:
 
     // In Ex mode: cursor at last new line.
     // Otherwise: cursor at first new line.
+    pos_T *cursor = &WIN_PRIMCURS(curwin);
     if (exmode_active) {
-      curwin->w_cursor.lnum = from + linecnt;
+      cursor->lnum = from + linecnt;
     } else {
-      curwin->w_cursor.lnum = from + 1;
+      cursor->lnum = from + 1;
     }
     check_cursor_lnum(curwin);
     beginline(BL_WHITE | BL_FIX);           // on first non-blank
@@ -3091,7 +3092,7 @@ void buf_reload(buf_T *buf, int orig_mode, bool reload_options)
     prep_exarg(&ea, buf);
   }
 
-  pos_T old_cursor = curwin->w_cursor;
+  pos_T old_cursor = WIN_PRIMCURS(curwin);
   linenr_T old_topline = curwin->w_topline;
 
   if (p_ur < 0 || curbuf->b_ml.ml_line_count <= p_ur) {
@@ -3172,7 +3173,7 @@ void buf_reload(buf_T *buf, int orig_mode, bool reload_options)
   // Restore the topline and cursor position and check it (lines may
   // have been removed).
   curwin->w_topline = MIN(old_topline, curbuf->b_ml.ml_line_count);
-  curwin->w_cursor = old_cursor;
+  WIN_PRIMCURS(curwin) = old_cursor;
   check_cursor(curwin);
   update_topline(curwin);
   curbuf->b_keep_filetype = false;

@@ -1225,8 +1225,9 @@ int nlua_call(lua_State *lstate)
 
   typval_T rettv;
   funcexe_T funcexe = FUNCEXE_INIT;
-  funcexe.fe_firstline = curwin->w_cursor.lnum;
-  funcexe.fe_lastline = curwin->w_cursor.lnum;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  funcexe.fe_firstline = cursor->lnum;
+  funcexe.fe_lastline = cursor->lnum;
   funcexe.fe_evaluate = true;
 
   TRY_WRAP(&err, {

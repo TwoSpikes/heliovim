@@ -291,21 +291,22 @@ static int do_popup(int which_button, int m_pos_flag, pos_T m_pos)
       if (m_pos_flag != IN_BUFFER) {
         jump_flags = MOUSE_MAY_STOP_VIS;
       } else {
+        pos_T *cursor = &WIN_PRIMCURS(curwin);
         if (VIsual_mode == 'V') {
-          if ((curwin->w_cursor.lnum <= VIsual.lnum
-               && (m_pos.lnum < curwin->w_cursor.lnum || VIsual.lnum < m_pos.lnum))
-              || (VIsual.lnum < curwin->w_cursor.lnum
-                  && (m_pos.lnum < VIsual.lnum || curwin->w_cursor.lnum < m_pos.lnum))) {
+          if ((cursor->lnum <= VIsual.lnum
+               && (m_pos.lnum < cursor->lnum || VIsual.lnum < m_pos.lnum))
+              || (VIsual.lnum < cursor->lnum
+                  && (m_pos.lnum < VIsual.lnum || cursor->lnum < m_pos.lnum))) {
             jump_flags = MOUSE_MAY_STOP_VIS;
           }
-        } else if ((ltoreq(curwin->w_cursor, VIsual)
-                    && (lt(m_pos, curwin->w_cursor) || lt(VIsual, m_pos)))
-                   || (lt(VIsual, curwin->w_cursor)
-                       && (lt(m_pos, VIsual) || lt(curwin->w_cursor, m_pos)))) {
+        } else if ((ltoreq(*cursor, VIsual)
+                    && (lt(m_pos, *cursor) || lt(VIsual, m_pos)))
+                   || (lt(VIsual, *cursor)
+                       && (lt(m_pos, VIsual) || lt(*cursor, m_pos)))) {
           jump_flags = MOUSE_MAY_STOP_VIS;
         } else if (VIsual_mode == Ctrl_V) {
           colnr_T leftcol, rightcol;
-          getvcols(curwin, &curwin->w_cursor, &VIsual, &leftcol, &rightcol);
+          getvcols(curwin, cursor, &VIsual, &leftcol, &rightcol);
           getvcol(curwin, &m_pos, NULL, &m_pos.col, NULL);
           if (m_pos.col < leftcol || m_pos.col > rightcol) {
             jump_flags = MOUSE_MAY_STOP_VIS;
@@ -609,6 +610,8 @@ bool do_mouse(oparg_T *oap, int c, int dir, int count, bool fixindent)
 
   pos_T end_visual = { 0 };
   pos_T start_visual = { 0 };
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
   if ((State & (MODE_NORMAL | MODE_INSERT))
       && !(mod_mask & (MOD_MASK_SHIFT | MOD_MASK_CTRL))) {
     if (which_button == MOUSE_LEFT) {
@@ -623,12 +626,12 @@ bool do_mouse(oparg_T *oap, int c, int dir, int count, bool fixindent)
     } else if (which_button == MOUSE_RIGHT) {
       if (is_click && VIsual_active) {
         // Remember the start and end of visual before moving the cursor.
-        if (lt(curwin->w_cursor, VIsual)) {
-          start_visual = curwin->w_cursor;
+        if (lt(*cursor, VIsual)) {
+          start_visual = *cursor;
           end_visual = VIsual;
         } else {
           start_visual = VIsual;
-          end_visual = curwin->w_cursor;
+          end_visual = *cursor;
         }
       }
       jump_flags |= MOUSE_FOCUS;
@@ -649,7 +652,7 @@ bool do_mouse(oparg_T *oap, int c, int dir, int count, bool fixindent)
 
   // JUMP!
   int old_active = VIsual_active;
-  pos_T save_cursor = curwin->w_cursor;
+  pos_T save_cursor = *cursor;
   jump_flags = jump_to_mouse(jump_flags, oap == NULL ? NULL : &(oap->inclusive), which_button);
 
   bool moved = (jump_flags & CURSOR_MOVED);
@@ -730,13 +733,13 @@ bool do_mouse(oparg_T *oap, int c, int dir, int count, bool fixindent)
       && which_button == MOUSE_LEFT) {
     // open or close a fold at this line
     if (jump_flags & MOUSE_FOLD_OPEN) {
-      openFold(curwin->w_cursor, 1);
+      openFold(*cursor, 1);
     } else {
-      closeFold(curwin->w_cursor, 1);
+      closeFold(*cursor, 1);
     }
     // don't move the cursor if still in the same window
     if (curwin == old_curwin) {
-      curwin->w_cursor = save_cursor;
+      *cursor = save_cursor;
     }
   }
 
@@ -770,50 +773,50 @@ bool do_mouse(oparg_T *oap, int c, int dir, int count, bool fixindent)
     if (VIsual_mode == Ctrl_V) {
       colnr_T leftcol, rightcol;
       getvcols(curwin, &start_visual, &end_visual, &leftcol, &rightcol);
-      if (curwin->w_curswant > (leftcol + rightcol) / 2) {
+      if (primsel->curswant > (leftcol + rightcol) / 2) {
         end_visual.col = leftcol;
       } else {
         end_visual.col = rightcol;
       }
-      if (curwin->w_cursor.lnum >=
+      if (cursor->lnum >=
           (start_visual.lnum + end_visual.lnum) / 2) {
         end_visual.lnum = start_visual.lnum;
       }
 
       // move VIsual to the right column
-      start_visual = curwin->w_cursor;              // save the cursor pos
-      curwin->w_cursor = end_visual;
+      start_visual = *cursor;              // save the cursor pos
+      *cursor = end_visual;
       coladvance(curwin, end_visual.col);
-      VIsual = curwin->w_cursor;
-      curwin->w_cursor = start_visual;              // restore the cursor
+      VIsual = *cursor;
+      *cursor = start_visual;              // restore the cursor
     } else {
       // If the click is before the start of visual, change the start.
       // If the click is after the end of visual, change the end.  If
       // the click is inside the visual, change the closest side.
-      if (lt(curwin->w_cursor, start_visual)) {
+      if (lt(*cursor, start_visual)) {
         VIsual = end_visual;
-      } else if (lt(end_visual, curwin->w_cursor)) {
+      } else if (lt(end_visual, *cursor)) {
         VIsual = start_visual;
       } else {
         // In the same line, compare column number
         if (end_visual.lnum == start_visual.lnum) {
-          if (curwin->w_cursor.col - start_visual.col >
-              end_visual.col - curwin->w_cursor.col) {
+          if (cursor->col - start_visual.col >
+              end_visual.col - cursor->col) {
             VIsual = start_visual;
           } else {
             VIsual = end_visual;
           }
         } else {
           // In different lines, compare line number
-          diff = (curwin->w_cursor.lnum - start_visual.lnum) -
-                 (end_visual.lnum - curwin->w_cursor.lnum);
+          diff = (cursor->lnum - start_visual.lnum) -
+                 (end_visual.lnum - cursor->lnum);
 
           if (diff > 0) {                       // closest to end
             VIsual = start_visual;
           } else if (diff < 0) {                   // closest to start
             VIsual = end_visual;
           } else {                                // in the middle line
-            if (curwin->w_cursor.col <
+            if (cursor->col <
                 (start_visual.col + end_visual.col) / 2) {
               VIsual = end_visual;
             } else {
@@ -854,7 +857,7 @@ bool do_mouse(oparg_T *oap, int c, int dir, int count, bool fixindent)
 
     // Remember where the paste started, so in edit() Insstart can be set to this position
     if (restart_edit != 0) {
-      where_paste_started = curwin->w_cursor;
+      where_paste_started = *cursor;
     }
     do_put(regname, reg, dir, count,
            (fixindent ? PUT_FIXINDENT : 0)| PUT_CURSEND);
@@ -896,7 +899,7 @@ bool do_mouse(oparg_T *oap, int c, int dir, int count, bool fixindent)
       if (VIsual_active) {
         orig_cursor = VIsual;
       } else {
-        VIsual = curwin->w_cursor;
+        VIsual = *cursor;
         orig_cursor = VIsual;
         VIsual_active = true;
         VIsual_reselect = true;
@@ -925,7 +928,7 @@ bool do_mouse(oparg_T *oap, int c, int dir, int count, bool fixindent)
         // If the character under the cursor (skipping white space) is
         // not a word character, try finding a match and select a (),
         // {}, [], #if/#endif, etc. block.
-        end_visual = curwin->w_cursor;
+        end_visual = *cursor;
         int gc;
         while (gc = gchar_pos(&end_visual), ascii_iswhite(gc)) {
           inc(&end_visual);
@@ -936,16 +939,16 @@ bool do_mouse(oparg_T *oap, int c, int dir, int count, bool fixindent)
         if (oap != NULL
             && VIsual_mode == 'v'
             && !vim_iswordc(gchar_pos(&end_visual))
-            && equalpos(curwin->w_cursor, VIsual)
+            && equalpos(*cursor, VIsual)
             && (pos = findmatch(oap, NUL)) != NULL) {
-          curwin->w_cursor = *pos;
+          *cursor = *pos;
           if (oap->motion_type == kMTLineWise) {
             VIsual_mode = 'V';
           } else if (*p_sel == 'e') {
-            if (lt(curwin->w_cursor, VIsual)) {
+            if (lt(*cursor, VIsual)) {
               VIsual.col++;
             } else {
-              curwin->w_cursor.col++;
+              cursor->col++;
             }
           }
         }
@@ -953,16 +956,16 @@ bool do_mouse(oparg_T *oap, int c, int dir, int count, bool fixindent)
 
       if (pos == NULL && (is_click || is_drag)) {
         // When not found a match or when dragging: extend to include a word.
-        if (lt(curwin->w_cursor, orig_cursor)) {
-          find_start_of_word(&curwin->w_cursor);
+        if (lt(*cursor, orig_cursor)) {
+          find_start_of_word(cursor);
           find_end_of_word(&VIsual);
         } else {
           find_start_of_word(&VIsual);
           if (*p_sel == 'e' && *get_cursor_pos_ptr() != NUL) {
-            curwin->w_cursor.col +=
+            cursor->col +=
               utfc_ptr2len(get_cursor_pos_ptr());
           }
-          find_end_of_word(&curwin->w_cursor);
+          find_end_of_word(cursor);
         }
       }
       curwin->w_set_curswant = true;
@@ -993,7 +996,8 @@ void ins_mouse(int c)
   win_T *old_curwin = curwin;
 
   undisplay_dollar();
-  pos_T tpos = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T tpos = *cursor;
   if (do_mouse(NULL, c, BACKWARD, 1, 0)) {
     win_T *new_curwin = curwin;
 
@@ -1111,7 +1115,8 @@ void ins_mousescroll(int dir)
     undisplay_dollar();
   }
 
-  pos_T orig_cursor = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T orig_cursor = *cursor;
 
   // Call the common mouse scroll function shared with other modes.
   do_mousescroll(&cap);
@@ -1120,7 +1125,7 @@ void ins_mousescroll(int dir)
   curwin = old_curwin;
   curbuf = curwin->w_buffer;
 
-  if (!equalpos(curwin->w_cursor, orig_cursor)) {
+  if (!equalpos(*cursor, orig_cursor)) {
     start_arrow(&orig_cursor);
     set_can_cindent(true);
   }
@@ -1299,7 +1304,9 @@ retnomove:
   }
 
   win_T *old_curwin = curwin;
-  pos_T old_cursor = curwin->w_cursor;
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T old_cursor = *cursor;
   if (!keep_focus) {
     if (on_winbar) {
       return IN_OTHER_WIN | MOUSE_WINBAR;
@@ -1385,7 +1392,7 @@ retnomove:
       return IN_SEP_LINE | CURSOR_MOVED;
     }
 
-    curwin->w_cursor.lnum = curwin->w_topline;
+    cursor->lnum = curwin->w_topline;
   } else if (status_line_offset) {
     if (which_button == MOUSE_LEFT && dragwin != NULL) {
       // Drag the status line
@@ -1490,9 +1497,9 @@ retnomove:
       // far as it goes, moving the mouse in the top line should scroll
       // the text down (done later when recomputing w_topline).
       if (mouse_dragging > 0
-          && curwin->w_cursor.lnum
+          && cursor->lnum
           == curwin->w_buffer->b_ml.ml_line_count
-          && curwin->w_cursor.lnum == curwin->w_topline) {
+          && cursor->lnum == curwin->w_topline) {
         curwin->w_valid &= ~(VALID_TOPLINE);
       }
     }
@@ -1504,7 +1511,7 @@ foldclick:;
   mouse_check_grid(&col_from_screen, &mouse_fold_flags);
 
   // compute the position in the buffer line from the posn on the screen
-  if (mouse_comp_pos(curwin, &row, &col, &curwin->w_cursor.lnum)) {
+  if (mouse_comp_pos(curwin, &row, &col, &cursor->lnum)) {
     mouse_past_bottom = true;
   }
 
@@ -1526,7 +1533,7 @@ foldclick:;
     col = col_from_screen;
   }
 
-  curwin->w_curswant = col;
+  primsel->curswant = col;
   curwin->w_set_curswant = false;       // May still have been true
   if (coladvance(curwin, col) == FAIL) {        // Mouse click beyond end of line
     if (inclusive != NULL) {
@@ -1538,8 +1545,8 @@ foldclick:;
   }
 
   count = on_statuscol ? (IN_OTHER_WIN|MOUSE_STATUSCOL) : IN_BUFFER;
-  if (curwin != old_curwin || curwin->w_cursor.lnum != old_cursor.lnum
-      || curwin->w_cursor.col != old_cursor.col) {
+  if (curwin != old_curwin || cursor->lnum != old_cursor.lnum
+      || cursor->col != old_cursor.col) {
     count |= CURSOR_MOVED;              // Cursor has moved
   }
 
@@ -1561,10 +1568,11 @@ static bool do_mousescroll_horiz(colnr_T leftcol)
 
   // When the line of the cursor is too short, move the cursor to the
   // longest visible line.
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   if (!virtual_active(curwin)
-      && leftcol > scroll_line_len(curwin->w_cursor.lnum)) {
-    curwin->w_cursor.lnum = find_longest_lnum();
-    curwin->w_cursor.col = 0;
+      && leftcol > scroll_line_len(cursor->lnum)) {
+    cursor->lnum = find_longest_lnum();
+    cursor->col = 0;
   }
 
   return set_leftcol(leftcol);
@@ -1864,8 +1872,9 @@ static linenr_T find_longest_lnum(void)
   // Calculate maximum for horizontal scrollbar.  Check for reasonable
   // line numbers, topline and botline can be invalid when displaying is
   // postponed.
-  if (curwin->w_topline <= curwin->w_cursor.lnum
-      && curwin->w_botline > curwin->w_cursor.lnum
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  if (curwin->w_topline <= cursor->lnum
+      && curwin->w_botline > cursor->lnum
       && curwin->w_botline <= curbuf->b_ml.ml_line_count + 1) {
     colnr_T max = 0;
 
@@ -1878,14 +1887,14 @@ static linenr_T find_longest_lnum(void)
         max = len;
         ret = lnum;
       } else if (len == max
-                 && abs(lnum - curwin->w_cursor.lnum)
-                 < abs(ret - curwin->w_cursor.lnum)) {
+                 && abs(lnum - cursor->lnum)
+                 < abs(ret - cursor->lnum)) {
         ret = lnum;
       }
     }
   } else {
     // Use cursor line only.
-    ret = curwin->w_cursor.lnum;
+    ret = cursor->lnum;
   }
 
   return ret;

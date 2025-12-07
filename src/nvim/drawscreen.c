@@ -146,10 +146,12 @@ void conceal_check_cursor_line(void)
     return;
   }
 
-  redrawWinline(curwin, curwin->w_cursor.lnum);
+  pos_T cursor = WIN_PRIMCURS(curwin);
+
+  redrawWinline(curwin, cursor.lnum);
 
   // Concealed line visibility toggled.
-  if (decor_conceal_line(curwin, curwin->w_cursor.lnum - 1, true)) {
+  if (decor_conceal_line(curwin, cursor.lnum - 1, true)) {
     changed_window_setting(curwin);
   }
   // Need to recompute cursor column, e.g., when starting Visual mode
@@ -766,9 +768,10 @@ void setcursor_mayforce(win_T *wp, bool force)
     if (wp->w_p_rl) {
       // With 'rightleft' set and the cursor on a double-wide character,
       // position it on the leftmost column.
-      char *cursor = ml_get_buf(wp->w_buffer, wp->w_cursor.lnum) + wp->w_cursor.col;
-      col = wp->w_view_width - wp->w_wcol - ((utf_ptr2cells(cursor) == 2
-                                              && vim_isprintc(utf_ptr2char(cursor))) ? 2 : 1);
+      pos_T cursor = WIN_PRIMCURS(wp);
+      char *under_cursor = ml_get_buf(wp->w_buffer, cursor.lnum) + cursor.col;
+      col = wp->w_view_width - wp->w_wcol - ((utf_ptr2cells(under_cursor) == 2
+                                              && vim_isprintc(utf_ptr2char(under_cursor))) ? 2 : 1);
     }
 
     ScreenGrid *grid = grid_adjust(&wp->w_grid, &row, &col);
@@ -797,16 +800,18 @@ bool redraw_custom_title_later(void)
 void show_cursor_info_later(bool force)
 {
   int state = get_real_state();
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T cursor = primsel->cursor;
   int empty_line = (State & MODE_INSERT) == 0
-                   && *ml_get_buf(curwin->w_buffer, curwin->w_cursor.lnum) == NUL;
+                   && *ml_get_buf(curwin->w_buffer, cursor.lnum) == NUL;
 
   // Only draw when something changed.
   validate_virtcol(curwin);
   if (force
-      || curwin->w_cursor.lnum != curwin->w_stl_cursor.lnum
-      || curwin->w_cursor.col != curwin->w_stl_cursor.col
-      || curwin->w_virtcol != curwin->w_stl_virtcol
-      || curwin->w_cursor.coladd != curwin->w_stl_cursor.coladd
+      || cursor.lnum != curwin->w_stl_cursor.lnum
+      || cursor.col != curwin->w_stl_cursor.col
+      || primsel->virtcol != curwin->w_stl_virtcol
+      || cursor.coladd != curwin->w_stl_cursor.coladd
       || curwin->w_topline != curwin->w_stl_topline
       || curwin->w_buffer->b_ml.ml_line_count != curwin->w_stl_line_count
       || curwin->w_topfill != curwin->w_stl_topfill
@@ -830,8 +835,8 @@ void show_cursor_info_later(bool force)
     redraw_custom_title_later();
   }
 
-  curwin->w_stl_cursor = curwin->w_cursor;
-  curwin->w_stl_virtcol = curwin->w_virtcol;
+  curwin->w_stl_cursor = cursor;
+  curwin->w_stl_virtcol = primsel->virtcol;
   curwin->w_stl_empty = (char)empty_line;
   curwin->w_stl_topline = curwin->w_topline;
   curwin->w_stl_line_count = curwin->w_buffer->b_ml.ml_line_count;
@@ -1782,6 +1787,10 @@ static void win_update(win_T *wp)
     type = UPD_NOT_VALID;
   }
 
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T *wp_cursor = &WIN_PRIMCURS(wp);
+
   // check if we are updating or removing the inverted part
   if ((VIsual_active && buf == curwin->w_buffer)
       || (wp->w_old_cursor_lnum != 0 && type != UPD_NOT_VALID)) {
@@ -1792,12 +1801,12 @@ static void win_update(win_T *wp)
         // If the type of Visual selection changed, redraw the whole
         // selection.  Also when the ownership of the X selection is
         // gained or lost.
-        if (curwin->w_cursor.lnum < VIsual.lnum) {
-          from = curwin->w_cursor.lnum;
+        if (cursor->lnum < VIsual.lnum) {
+          from = cursor->lnum;
           to = VIsual.lnum;
         } else {
           from = VIsual.lnum;
-          to = curwin->w_cursor.lnum;
+          to = cursor->lnum;
         }
         // redraw more when the cursor moved as well
         from = MIN(MIN(from, wp->w_old_cursor_lnum), wp->w_old_visual_lnum);
@@ -1806,12 +1815,12 @@ static void win_update(win_T *wp)
         // Find the line numbers that need to be updated: The lines
         // between the old cursor position and the current cursor
         // position.  Also check if the Visual position changed.
-        if (curwin->w_cursor.lnum < wp->w_old_cursor_lnum) {
-          from = curwin->w_cursor.lnum;
+        if (cursor->lnum < wp->w_old_cursor_lnum) {
+          from = cursor->lnum;
           to = wp->w_old_cursor_lnum;
         } else {
           from = wp->w_old_cursor_lnum;
-          to = curwin->w_cursor.lnum;
+          to = cursor->lnum;
           if (from == 0) {              // Visual mode just started
             from = to;
           }
@@ -1839,20 +1848,20 @@ static void win_update(win_T *wp)
           curwin->w_ve_flags = kOptVeFlagAll;
         }
 
-        getvcols(wp, &VIsual, &curwin->w_cursor, &fromc, &toc);
+        getvcols(wp, &VIsual, cursor, &fromc, &toc);
         toc++;
         curwin->w_ve_flags = save_ve_flags;
         // Highlight to the end of the line, unless 'virtualedit' has
         // "block".
-        if (curwin->w_curswant == MAXCOL) {
+        if (primsel->curswant == MAXCOL) {
           if (get_ve_flags(curwin) & kOptVeFlagBlock) {
             pos_T pos;
-            int cursor_above = curwin->w_cursor.lnum < VIsual.lnum;
+            int cursor_above = cursor->lnum < VIsual.lnum;
 
             // Need to find the longest line.
             toc = 0;
             pos.coladd = 0;
-            for (pos.lnum = curwin->w_cursor.lnum;
+            for (pos.lnum = cursor->lnum;
                  cursor_above ? pos.lnum <= VIsual.lnum : pos.lnum >= VIsual.lnum;
                  pos.lnum += cursor_above ? 1 : -1) {
               colnr_T t;
@@ -1941,10 +1950,10 @@ static void win_update(win_T *wp)
 
   if (VIsual_active && buf == curwin->w_buffer) {
     wp->w_old_visual_mode = (char)VIsual_mode;
-    wp->w_old_cursor_lnum = curwin->w_cursor.lnum;
+    wp->w_old_cursor_lnum = cursor->lnum;
     wp->w_old_visual_lnum = VIsual.lnum;
     wp->w_old_visual_col = VIsual.col;
-    wp->w_old_curswant = curwin->w_curswant;
+    wp->w_old_curswant = primsel->curswant;
   } else {
     wp->w_old_visual_mode = 0;
     wp->w_old_cursor_lnum = 0;
@@ -2028,7 +2037,7 @@ static void win_update(win_T *wp)
       // When lines are folded, display one line for all of them.
       // Otherwise, display normally (can be several display lines when
       // 'wrap' is on).
-      foldinfo_T foldinfo = wp->w_p_cul && lnum == wp->w_cursor.lnum
+      foldinfo_T foldinfo = wp->w_p_cul && lnum == wp_cursor->lnum
                             ? cursorline_fi : fold_info(wp, lnum);
 
       // If the line is concealed and has no filler lines, go to the next line.
@@ -2067,7 +2076,7 @@ static void win_update(win_T *wp)
               && wp->w_lines[i].wl_lnum == mod_bot) {
             break;
           }
-          if (wp->w_lines[i].wl_lnum == wp->w_cursor.lnum) {
+          if (wp->w_lines[i].wl_lnum == wp_cursor->lnum) {
             old_cline_height = wp->w_lines[i].wl_size;
           }
           old_rows += wp->w_lines[i].wl_size;
@@ -2097,7 +2106,7 @@ static void win_update(win_T *wp)
           int j = idx;
           for (l = lnum; l < mod_bot; l++) {
             if (dollar_vcol >= 0 && wp == curwin
-                && old_cline_height > 0 && l == wp->w_cursor.lnum) {
+                && old_cline_height > 0 && l == wp_cursor->lnum) {
               // When dollar_vcol >= 0, cursor line isn't fully
               // redrawn, and its height remains unchanged.
               new_rows += old_cline_height;
@@ -2241,7 +2250,7 @@ static void win_update(win_T *wp)
       wp->w_lines[idx].wl_lnum = lnum;
       wp->w_lines[idx].wl_valid = true;
 
-      bool is_curline = wp == curwin && lnum == wp->w_cursor.lnum;
+      bool is_curline = wp == curwin && lnum == wp_cursor->lnum;
 
       if (row > wp->w_view_height) {         // past end of grid
         // we may need the size of that too long line later on
@@ -2262,8 +2271,8 @@ static void win_update(win_T *wp)
       // the text doesn't need to be redrawn, but the number column does.
       if ((wp->w_p_nu && mod_top != 0 && lnum >= mod_bot
            && buf->b_mod_set && buf->b_mod_xlines != 0)
-          || (wp->w_p_rnu && wp->w_last_cursor_lnum_rnu != wp->w_cursor.lnum)) {
-        foldinfo_T info = wp->w_p_cul && lnum == wp->w_cursor.lnum
+          || (wp->w_p_rnu && wp->w_last_cursor_lnum_rnu != wp_cursor->lnum)) {
+        foldinfo_T info = wp->w_p_cul && lnum == wp_cursor->lnum
                           ? cursorline_fi : fold_info(wp, lnum);
         win_line(wp, lnum, srow, wp->w_view_height, wp->w_lines[idx].wl_size, false, &spv, info);
       }
@@ -2303,7 +2312,7 @@ redr_statuscol:
   // update w_last_cursorline.
   wp->w_last_cursorline = wp->w_cursorline;
 
-  wp->w_last_cursor_lnum_rnu = wp->w_p_rnu ? wp->w_cursor.lnum : 0;
+  wp->w_last_cursor_lnum_rnu = wp->w_p_rnu ? wp_cursor->lnum : 0;
 
   wp->w_lines_valid = MAX(wp->w_lines_valid, idx);
 
@@ -2828,10 +2837,11 @@ bool win_cursorline_standout(const win_T *wp)
 /// @param[out] foldinfo foldinfo for the cursor line
 void win_update_cursorline(win_T *wp, foldinfo_T *foldinfo)
 {
-  wp->w_cursorline = win_cursorline_standout(wp) ? wp->w_cursor.lnum : 0;
+  pos_T *cursor = &WIN_PRIMCURS(wp);
+  wp->w_cursorline = win_cursorline_standout(wp) ? cursor->lnum : 0;
   if (wp->w_p_cul) {
     // Make sure that the cursorline on a closed fold is redrawn
-    *foldinfo = fold_info(wp, wp->w_cursor.lnum);
+    *foldinfo = fold_info(wp, cursor->lnum);
     if (foldinfo->fi_level != 0 && foldinfo->fi_lines > 0) {
       wp->w_cursorline = foldinfo->fi_lnum;
     }

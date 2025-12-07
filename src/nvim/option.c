@@ -3567,7 +3567,7 @@ static const char *did_set_option(OptIndex opt_idx, void *varp, OptVal old_value
     set_winbar(true);
   }
 
-  if (curwin->w_curswant != MAXCOL
+  if (WIN_PRIMSEL(curwin).curswant != MAXCOL
       && (opt->flags & (kOptFlagCurswant | kOptFlagRedrAll)) != 0
       && (opt->flags & kOptFlagHLOnly) == 0) {
     curwin->w_set_curswant = true;

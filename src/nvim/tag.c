@@ -341,6 +341,7 @@ void do_tag(char *tag, int type, int count, int forceit, bool verbose)
   free_string_option(nofile_fname);
   nofile_fname = NULL;
 
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   clearpos(&saved_fmark.mark);          // shutup gcc 4.0
   saved_fmark.fnum = 0;
   saved_fmark.view = (fmarkv_T)INIT_FMARKV;
@@ -440,12 +441,12 @@ void do_tag(char *tag, int type, int count, int forceit, bool verbose)
           }
           // A BufReadPost autocommand may jump to the '" mark, but
           // we don't what that here.
-          curwin->w_cursor.lnum = saved_fmark.mark.lnum;
+          cursor->lnum = saved_fmark.mark.lnum;
         } else {
           setpcmark();
-          curwin->w_cursor.lnum = saved_fmark.mark.lnum;
+          cursor->lnum = saved_fmark.mark.lnum;
         }
-        curwin->w_cursor.col = saved_fmark.mark.col;
+        cursor->col = saved_fmark.mark.col;
         curwin->w_set_curswant = true;
         if (jop_flags & kOptJopFlagView) {
           mark_view_restore(&saved_fmark);
@@ -532,9 +533,9 @@ void do_tag(char *tag, int type, int count, int forceit, bool verbose)
       // For ":tag [arg]" or ":tselect" remember position before the jump.
       saved_fmark = tagstack[tagstackidx].fmark;
       if (save_pos) {
-        tagstack[tagstackidx].fmark.mark = curwin->w_cursor;
+        tagstack[tagstackidx].fmark.mark = *cursor;
         tagstack[tagstackidx].fmark.fnum = curbuf->b_fnum;
-        tagstack[tagstackidx].fmark.view = mark_view_make(curwin->w_topline, curwin->w_cursor);
+        tagstack[tagstackidx].fmark.view = mark_view_make(curwin->w_topline, *cursor);
       }
 
       // Curwin will change in the call to jumpto_tag() if ":stag" was
@@ -1248,9 +1249,10 @@ static int find_tagfunc_tags(char *pat, garray_T *ga, int *match_count, int flag
                flags & TAG_INS_COMP ? "i" : "",
                flags & TAG_REGEXP ? "r" : "");
 
-  pos_T save_pos = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T save_pos = *cursor;
   int result = callback_call(&curbuf->b_tfu_cb, 3, args, &rettv);
-  curwin->w_cursor = save_pos;  // restore the cursor position
+  *cursor = save_pos;  // restore the cursor position
   check_cursor(curwin);         // make sure cursor position is valid
   d->dv_refcount--;
 
@@ -2929,6 +2931,7 @@ static int jumpto_tag(const char *lbuf_arg, int forceit, bool keep_help)
     if (pbuf[0] == '/' || pbuf[0] == '?') {
       str = skip_regexp(pbuf + 1, pbuf[0], false) + 1;
     }
+    pos_T *cursor = &WIN_PRIMCURS(curwin);
     if (str > pbuf_end - 1) {   // search command with nothing following
       size_t pbuflen = (size_t)(pbuf_end - pbuf);
 
@@ -2938,9 +2941,9 @@ static int jumpto_tag(const char *lbuf_arg, int forceit, bool keep_help)
       p_ws = true;              // need 'wrapscan' for backward searches
       p_ic = false;             // don't ignore case now
       p_scs = false;
-      linenr_T save_lnum = curwin->w_cursor.lnum;
+      linenr_T save_lnum = cursor->lnum;
 
-      curwin->w_cursor.lnum = tagp.tagline > 0
+      cursor->lnum = tagp.tagline > 0
                               // start search before line from "line:" field
                               ? tagp.tagline - 1
                               // start search before first line
@@ -2974,7 +2977,7 @@ static int jumpto_tag(const char *lbuf_arg, int forceit, bool keep_help)
         }
         if (found == 0) {
           emsg(_("E434: Can't find tag pattern"));
-          curwin->w_cursor.lnum = save_lnum;
+          cursor->lnum = save_lnum;
         } else {
           // Only give a message when really guessed, not when 'ic'
           // is set and match found while ignoring case.
@@ -3000,9 +3003,9 @@ static int jumpto_tag(const char *lbuf_arg, int forceit, bool keep_help)
       // Setup the sandbox for executing the command from the tags file.
       secure = 1;
       sandbox++;
-      curwin->w_cursor.lnum = 1;  // start command in line 1
-      curwin->w_cursor.col = 0;
-      curwin->w_cursor.coladd = 0;
+      cursor->lnum = 1;  // start command in line 1
+      cursor->col = 0;
+      cursor->coladd = 0;
       do_cmdline_cmd(pbuf);
       retval = OK;
 
@@ -3030,7 +3033,7 @@ static int jumpto_tag(const char *lbuf_arg, int forceit, bool keep_help)
       // For a help buffer: Put the cursor line at the top of the window,
       // the help subject will be below it.
       if (curbuf->b_help) {
-        set_topline(curwin, curwin->w_cursor.lnum);
+        set_topline(curwin, cursor->lnum);
       }
       if ((fdo_flags & kOptFdoFlagTag) && old_KeyTyped) {
         foldOpenCursor();

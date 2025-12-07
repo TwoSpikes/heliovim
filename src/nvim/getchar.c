@@ -832,7 +832,7 @@ int start_redo(int count, bool old_redo)
   }
 
   if (c == 'v') {   // redo Visual
-    VIsual = curwin->w_cursor;
+    VIsual = WIN_PRIMCURS(curwin);
     VIsual_active = true;
     VIsual_select = false;
     VIsual_reselect = true;
@@ -2743,8 +2743,10 @@ static int vgetorpeek(bool advance)
           int old_wcol = curwin->w_wcol;
           int old_wrow = curwin->w_wrow;
 
+          pos_T *cursor = &WIN_PRIMCURS(curwin);
+
           // move cursor left, if possible
-          if (curwin->w_cursor.col != 0) {
+          if (cursor->col != 0) {
             colnr_T col = 0;
             char *ptr;
             if (curwin->w_wcol > 0) {
@@ -2752,13 +2754,13 @@ static int vgetorpeek(bool advance)
               // we are expecting to truncate the trailing
               // white-space, so find the last non-white
               // character -- webb
-              if (did_ai && *skipwhite(get_cursor_line_ptr() + curwin->w_cursor.col) == NUL) {
+              if (did_ai && *skipwhite(get_cursor_line_ptr() + cursor->col) == NUL) {
                 curwin->w_wcol = 0;
                 ptr = get_cursor_line_ptr();
-                char *endptr = ptr + curwin->w_cursor.col;
+                char *endptr = ptr + cursor->col;
 
                 CharsizeArg csarg;
-                CSType cstype = init_charsize_arg(&csarg, curwin, curwin->w_cursor.lnum, ptr);
+                CSType cstype = init_charsize_arg(&csarg, curwin, cursor->lnum, ptr);
                 StrCharInfo ci = utf_ptr2StrCharInfo(ptr);
                 int vcol = 0;
                 while (ci.ptr < endptr) {
@@ -2776,12 +2778,12 @@ static int vgetorpeek(bool advance)
                 col = 0;  // no correction needed
               } else {
                 curwin->w_wcol--;
-                col = curwin->w_cursor.col - 1;
+                col = cursor->col - 1;
               }
             } else if (curwin->w_p_wrap && curwin->w_wrow) {
               curwin->w_wrow--;
               curwin->w_wcol = curwin->w_view_width - 1;
-              col = curwin->w_cursor.col - 1;
+              col = cursor->col - 1;
             }
             if (col > 0 && curwin->w_wcol > 0) {
               // Correct when the cursor is on the right halve

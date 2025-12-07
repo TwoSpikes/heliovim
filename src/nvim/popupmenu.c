@@ -1073,6 +1073,8 @@ static bool pum_set_selected(int n, int repeat)
   unsigned cur_cot_flags = get_cot_flags();
   bool use_float = (cur_cot_flags & kOptCotFlagPopup) != 0;
 
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   // Close the floating preview window if 'selected' is -1, indicating a return to the original
   // state. It is also closed when the selected item has no corresponding info item.
   if (use_float && (pum_selected < 0 || pum_array[pum_selected].pum_info == NULL)) {
@@ -1216,8 +1218,8 @@ static bool pum_set_selected(int n, int repeat)
           } else if (curwin->w_topline > curbuf->b_ml.ml_line_count) {
             curwin->w_topline = curbuf->b_ml.ml_line_count;
           }
-          curwin->w_cursor.lnum = 1;
-          curwin->w_cursor.col = 0;
+          cursor->lnum = 1;
+          cursor->col = 0;
 
           if (use_float) {
             // adjust floating window by actually height and max info text width

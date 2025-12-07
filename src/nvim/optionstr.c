@@ -1324,7 +1324,7 @@ const char *did_set_guicursor(optset_T *args FUNC_ATTR_UNUSED)
   }
   if (VIsual_active) {
     // In Visual mode cursor may be drawn differently.
-    redrawWinline(curwin, curwin->w_cursor.lnum);
+    redrawWinline(curwin, WIN_PRIMCURS(curwin).lnum);
   }
   return NULL;
 }
@@ -2052,7 +2052,7 @@ const char *did_set_virtualedit(optset_T *args)
       // Recompute cursor position in case the new 've' setting
       // changes something.
       validate_virtcol(win);
-      coladvance(win, win->w_virtcol);
+      coladvance(win, WIN_PRIMSEL(win).virtcol);
     }
   }
   return NULL;

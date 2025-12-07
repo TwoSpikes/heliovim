@@ -1568,8 +1568,9 @@ int func_call(char *name, typval_T *args, partial_T *partial, dict_T *selfdict, 
   });
 
   funcexe_T funcexe = FUNCEXE_INIT;
-  funcexe.fe_firstline = curwin->w_cursor.lnum;
-  funcexe.fe_lastline = curwin->w_cursor.lnum;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  funcexe.fe_firstline = cursor->lnum;
+  funcexe.fe_lastline = cursor->lnum;
   funcexe.fe_evaluate = true;
   funcexe.fe_partial = partial;
   funcexe.fe_selfdict = selfdict;
@@ -3342,9 +3343,10 @@ static int ex_call_inner(exarg_T *eap, char *name, char **arg, char *startarg,
         emsg(_(e_invrange));
         break;
       }
-      curwin->w_cursor.lnum = lnum;
-      curwin->w_cursor.col = 0;
-      curwin->w_cursor.coladd = 0;
+      pos_T *cursor = &WIN_PRIMCURS(curwin);
+      cursor->lnum = lnum;
+      cursor->col = 0;
+      cursor->coladd = 0;
     }
     *arg = startarg;
 

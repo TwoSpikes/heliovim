@@ -506,7 +506,7 @@ void f_tabpagewinnr(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 bool win_execute_before(win_execute_T *args, win_T *wp, tabpage_T *tp)
 {
   args->wp = wp;
-  args->curpos = wp->w_cursor;
+  args->curpos = WIN_PRIMCURS(wp);
   args->cwd_status = FAIL;
   args->apply_acd = false;
 
@@ -549,7 +549,7 @@ void win_execute_after(win_execute_T *args)
   }
 
   // Update the status line if the cursor moved.
-  if (win_valid(args->wp) && !equalpos(args->curpos, args->wp->w_cursor)) {
+  if (win_valid(args->wp) && !equalpos(args->curpos, WIN_PRIMCURS(args->wp))) {
     args->wp->w_redr_status = true;
   }
 
@@ -879,17 +879,19 @@ void f_winrestview(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 
   dict_T *dict = argvars[0].vval.v_dict;
   dictitem_T *di;
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
   if ((di = tv_dict_find(dict, S_LEN("lnum"))) != NULL) {
-    curwin->w_cursor.lnum = (linenr_T)tv_get_number(&di->di_tv);
+    cursor->lnum = (linenr_T)tv_get_number(&di->di_tv);
   }
   if ((di = tv_dict_find(dict, S_LEN("col"))) != NULL) {
-    curwin->w_cursor.col = (colnr_T)tv_get_number(&di->di_tv);
+    cursor->col = (colnr_T)tv_get_number(&di->di_tv);
   }
   if ((di = tv_dict_find(dict, S_LEN("coladd"))) != NULL) {
-    curwin->w_cursor.coladd = (colnr_T)tv_get_number(&di->di_tv);
+    cursor->coladd = (colnr_T)tv_get_number(&di->di_tv);
   }
   if ((di = tv_dict_find(dict, S_LEN("curswant"))) != NULL) {
-    curwin->w_curswant = (colnr_T)tv_get_number(&di->di_tv);
+    primsel->curswant = (colnr_T)tv_get_number(&di->di_tv);
     curwin->w_set_curswant = false;
   }
   if ((di = tv_dict_find(dict, S_LEN("topline"))) != NULL) {
@@ -925,11 +927,14 @@ void f_winsaveview(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
   tv_dict_alloc_ret(rettv);
   dict_T *dict = rettv->vval.v_dict;
 
-  tv_dict_add_nr(dict, S_LEN("lnum"), (varnumber_T)curwin->w_cursor.lnum);
-  tv_dict_add_nr(dict, S_LEN("col"), (varnumber_T)curwin->w_cursor.col);
-  tv_dict_add_nr(dict, S_LEN("coladd"), (varnumber_T)curwin->w_cursor.coladd);
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+
+  tv_dict_add_nr(dict, S_LEN("lnum"), (varnumber_T)cursor->lnum);
+  tv_dict_add_nr(dict, S_LEN("col"), (varnumber_T)cursor->col);
+  tv_dict_add_nr(dict, S_LEN("coladd"), (varnumber_T)cursor->coladd);
   update_curswant();
-  tv_dict_add_nr(dict, S_LEN("curswant"), (varnumber_T)curwin->w_curswant);
+  tv_dict_add_nr(dict, S_LEN("curswant"), (varnumber_T)primsel->curswant);
 
   tv_dict_add_nr(dict, S_LEN("topline"), (varnumber_T)curwin->w_topline);
   tv_dict_add_nr(dict, S_LEN("topfill"), (varnumber_T)curwin->w_topfill);

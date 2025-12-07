@@ -4148,6 +4148,8 @@ int ml_find_line_or_offset(buf_T *buf, linenr_T lnum, int *offp, bool no_ff)
 void goto_byte(int cnt)
 {
   int boff = cnt;
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
 
   ml_flush_line(curbuf, false);  // cached line may be dirty
   setpcmark();
@@ -4156,13 +4158,13 @@ void goto_byte(int cnt)
   }
   linenr_T lnum = (linenr_T)ml_find_line_or_offset(curbuf, 0, &boff, false);
   if (lnum < 1) {         // past the end
-    curwin->w_cursor.lnum = curbuf->b_ml.ml_line_count;
-    curwin->w_curswant = MAXCOL;
+    cursor->lnum = curbuf->b_ml.ml_line_count;
+    primsel->curswant = MAXCOL;
     coladvance(curwin, MAXCOL);
   } else {
-    curwin->w_cursor.lnum = lnum;
-    curwin->w_cursor.col = (colnr_T)boff;
-    curwin->w_cursor.coladd = 0;
+    cursor->lnum = lnum;
+    cursor->col = (colnr_T)boff;
+    cursor->coladd = 0;
     curwin->w_set_curswant = true;
   }
   check_cursor(curwin);

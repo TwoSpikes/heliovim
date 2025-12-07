@@ -675,7 +675,8 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
 
     FOR_ALL_TAB_WINDOWS(tp, win) {
       if (win->w_buffer == buf) {
-        if (win->w_cursor.lnum >= start_row && win->w_cursor.lnum <= end_row) {
+        pos_T *cursor = &WIN_PRIMCURS(win);
+        if (cursor->lnum >= start_row && cursor->lnum <= end_row) {
           fix_cursor_cols(win, (linenr_T)start_row, (colnr_T)start_col, (linenr_T)end_row,
                           (colnr_T)end_col, (linenr_T)new_len, (colnr_T)last_item.size);
         } else {
@@ -1261,10 +1262,11 @@ Dict nvim__buf_stats(Buffer buffer, Arena *arena, Error *err)
 // Changed lines from `lo` to `hi`; added `extra` lines (negative if deleted).
 static void fix_cursor(win_T *win, linenr_T lo, linenr_T hi, linenr_T extra)
 {
-  if (win->w_cursor.lnum >= lo) {
+  pos_T cursor = WIN_PRIMCURS(win);
+  if (cursor.lnum >= lo) {
     // Adjust cursor position if it's in/after the changed lines.
-    if (win->w_cursor.lnum >= hi) {
-      win->w_cursor.lnum += extra;
+    if (cursor.lnum >= hi) {
+      cursor.lnum += extra;
     } else if (extra < 0) {
       check_cursor_lnum(win);
     }
@@ -1290,13 +1292,14 @@ static void fix_cursor_cols(win_T *win, linenr_T start_row, colnr_T start_col, l
   colnr_T end_row_change_end = end_row_change_start + new_cols_at_end_row;
 
   // check if cursor is after replaced range or not
-  if (win->w_cursor.lnum == end_row && win->w_cursor.col + mode_col_adj > end_col) {
+  pos_T cursor = WIN_PRIMCURS(win);
+  if (cursor.lnum == end_row && cursor.col + mode_col_adj > end_col) {
     // if cursor is after replaced range, it's shifted
     // to keep it's position the same, relative to end_col
 
     linenr_T old_rows = end_row - start_row + 1;
-    win->w_cursor.lnum += new_rows - old_rows;
-    win->w_cursor.col += end_row_change_end - end_col;
+    cursor.lnum += new_rows - old_rows;
+    cursor.col += end_row_change_end - end_col;
   } else {
     // if cursor is inside replaced range
     // and the new range got smaller,
@@ -1305,19 +1308,19 @@ static void fix_cursor_cols(win_T *win, linenr_T start_row, colnr_T start_col, l
     // if cursor is before range or range did not
     // got smaller, position is not changed
 
-    colnr_T old_coladd = win->w_cursor.coladd;
+    colnr_T old_coladd = cursor.coladd;
 
     // it's easier to work with a single value here.
     // col and coladd are fixed by a later call
     // to check_cursor_col when necessary
-    win->w_cursor.col += win->w_cursor.coladd;
-    win->w_cursor.coladd = 0;
+    cursor.col += cursor.coladd;
+    cursor.coladd = 0;
 
     linenr_T new_end_row = start_row + new_rows - 1;
 
     // make sure cursor row is in the new row range
-    if (win->w_cursor.lnum > new_end_row) {
-      win->w_cursor.lnum = new_end_row;
+    if (cursor.lnum > new_end_row) {
+      cursor.lnum = new_end_row;
 
       // don't simply move cursor up, but to the end
       // of new_end_row, if it's not at or after
@@ -1325,22 +1328,22 @@ static void fix_cursor_cols(win_T *win, linenr_T start_row, colnr_T start_col, l
       // column might be additionally adjusted below
       // to keep it inside col range if needed
       colnr_T len = ml_get_buf_len(win->w_buffer, new_end_row);
-      if (win->w_cursor.col < len) {
-        win->w_cursor.col = len;
+      if (cursor.col < len) {
+        cursor.col = len;
       }
     }
 
     // if cursor is at the last row and
     // it wasn't after eol before, move it exactly
     // to end_row_change_end
-    if (win->w_cursor.lnum == new_end_row
-        && win->w_cursor.col > end_row_change_end && old_coladd == 0) {
-      win->w_cursor.col = end_row_change_end;
+    if (cursor.lnum == new_end_row
+        && cursor.col > end_row_change_end && old_coladd == 0) {
+      cursor.col = end_row_change_end;
 
       // make sure cursor is inside range, not after it,
       // except when doing so would move it before new range
-      if (win->w_cursor.col - mode_col_adj >= end_row_change_start) {
-        win->w_cursor.col -= mode_col_adj;
+      if (cursor.col - mode_col_adj >= end_row_change_start) {
+        cursor.col -= mode_col_adj;
       }
     }
   }

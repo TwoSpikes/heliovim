@@ -165,11 +165,11 @@ typedef struct {
 // Execute code with cursor position saved and restored and textlock active.
 #define TEXTLOCK_WRAP(code) \
   do { \
-    const pos_T save_cursor = curwin->w_cursor; \
+    const pos_T save_cursor = WIN_PRIMCURS(curwin); \
     textlock++; \
     code; \
     textlock--; \
-    curwin->w_cursor = save_cursor; \
+    WIN_PRIMCURS(curwin) = save_cursor; \
   } while (0)
 
 // Useful macro for executing some `code` for each item in an array.

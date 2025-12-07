@@ -437,7 +437,7 @@ void foldOpenCursor(void)
   if (hasAnyFolding(curwin)) {
     while (true) {
       int done = DONE_NOTHING;
-      setManualFold(curwin->w_cursor, true, false, &done);
+      setManualFold(WIN_PRIMCURS(curwin), true, false, &done);
       if (!(done & DONE_ACTION)) {
         break;
       }
@@ -488,7 +488,7 @@ void foldCheckClose(void)
 
   // 'foldclose' can only be "all" right now
   checkupdate(curwin);
-  if (checkCloseRec(&curwin->w_folds, curwin->w_cursor.lnum,
+  if (checkCloseRec(&curwin->w_folds, WIN_PRIMCURS(curwin).lnum,
                     (int)curwin->w_p_fdl)) {
     changed_window_setting(curwin);
   }
@@ -839,6 +839,7 @@ int foldMoveTo(const bool updown, const int dir, const int count)
 {
   int retval = FAIL;
   fold_T *fp;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   checkupdate(curwin);
 
@@ -853,11 +854,11 @@ int foldMoveTo(const bool updown, const int dir, const int count)
     }
     bool use_level = false;
     bool maybe_small = false;
-    linenr_T lnum_found = curwin->w_cursor.lnum;
+    linenr_T lnum_found = cursor->lnum;
     int level = 0;
     bool last = false;
     while (true) {
-      if (!foldFind(gap, curwin->w_cursor.lnum - lnum_off, &fp)) {
+      if (!foldFind(gap, cursor->lnum - lnum_off, &fp)) {
         if (!updown || gap->ga_len == 0) {
           break;
         }
@@ -897,7 +898,7 @@ int foldMoveTo(const bool updown, const int dir, const int count)
           // to start of next fold if there is one
           if (fp + 1 - (fold_T *)gap->ga_data < gap->ga_len) {
             linenr_T lnum = fp[1].fd_top + lnum_off;
-            if (lnum > curwin->w_cursor.lnum) {
+            if (lnum > cursor->lnum) {
               lnum_found = lnum;
             }
           }
@@ -905,7 +906,7 @@ int foldMoveTo(const bool updown, const int dir, const int count)
           // to end of previous fold if there is one
           if (fp > (fold_T *)gap->ga_data) {
             linenr_T lnum = fp[-1].fd_top + lnum_off + fp[-1].fd_len - 1;
-            if (lnum < curwin->w_cursor.lnum) {
+            if (lnum < cursor->lnum) {
               lnum_found = lnum;
             }
           }
@@ -915,12 +916,12 @@ int foldMoveTo(const bool updown, const int dir, const int count)
         // nested folds.
         if (dir == FORWARD) {
           linenr_T lnum = fp->fd_top + lnum_off + fp->fd_len - 1;
-          if (lnum > curwin->w_cursor.lnum) {
+          if (lnum > cursor->lnum) {
             lnum_found = lnum;
           }
         } else {
           linenr_T lnum = fp->fd_top + lnum_off;
-          if (lnum < curwin->w_cursor.lnum) {
+          if (lnum < cursor->lnum) {
             lnum_found = lnum;
           }
         }
@@ -935,12 +936,12 @@ int foldMoveTo(const bool updown, const int dir, const int count)
       lnum_off += fp->fd_top;
       level++;
     }
-    if (lnum_found != curwin->w_cursor.lnum) {
+    if (lnum_found != cursor->lnum) {
       if (retval == FAIL) {
         setpcmark();
       }
-      curwin->w_cursor.lnum = lnum_found;
-      curwin->w_cursor.col = 0;
+      cursor->lnum = lnum_found;
+      cursor->col = 0;
       retval = OK;
     } else {
       break;
@@ -987,12 +988,13 @@ void foldAdjustVisual(void)
   }
 
   pos_T *start, *end;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
-  if (ltoreq(VIsual, curwin->w_cursor)) {
+  if (ltoreq(VIsual, *cursor)) {
     start = &VIsual;
-    end = &curwin->w_cursor;
+    end = cursor;
   } else {
-    start = &curwin->w_cursor;
+    start = cursor;
     end = &VIsual;
   }
   if (hasFolding(curwin, start->lnum, &start->lnum, NULL)) {
@@ -1015,7 +1017,8 @@ void foldAdjustVisual(void)
 /// Move the cursor to the first line of a closed fold.
 void foldAdjustCursor(win_T *wp)
 {
-  hasFolding(wp, wp->w_cursor.lnum, &wp->w_cursor.lnum, NULL);
+  pos_T *cursor = &WIN_PRIMCURS(wp);
+  hasFolding(wp, cursor->lnum, &cursor->lnum, NULL);
 }
 
 // Internal functions for "fold_T" {{{1
@@ -1151,7 +1154,7 @@ static linenr_T setManualFold(pos_T pos, bool opening, bool recurse, int *donep)
     // line number from the diffs.
     FOR_ALL_WINDOWS_IN_TAB(wp, curtab) {
       if (wp != curwin && foldmethodIsDiff(wp) && wp->w_p_scb) {
-        dlnum = diff_lnum_win(curwin->w_cursor.lnum, wp);
+        dlnum = diff_lnum_win(WIN_PRIMCURS(curwin).lnum, wp);
         if (dlnum != 0) {
           setManualFoldWin(wp, dlnum, opening, recurse, NULL);
         }

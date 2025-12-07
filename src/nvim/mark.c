@@ -63,8 +63,9 @@
 // Returns OK on success, FAIL if bad name given.
 int setmark(int c)
 {
-  fmarkv_T view = mark_view_make(curwin->w_topline, curwin->w_cursor);
-  return setmark_pos(c, &curwin->w_cursor, curbuf->b_fnum, &view);
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  fmarkv_T view = mark_view_make(curwin->w_topline, *cursor);
+  return setmark_pos(c, cursor, curbuf->b_fnum, &view);
 }
 
 /// Free fmark_T item
@@ -121,8 +122,9 @@ int setmark_pos(int c, pos_T *pos, int fnum, fmarkv_T *view_pt)
     return FAIL;
   }
 
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   if (c == '\'' || c == '`') {
-    if (pos == &curwin->w_cursor) {
+    if (pos == cursor) {
       setpcmark();
       // keep it even when the cursor doesn't move
       curwin->w_prev_pcmark = curwin->w_pcmark;
@@ -257,7 +259,8 @@ void setpcmark(void)
   }
 
   curwin->w_prev_pcmark = curwin->w_pcmark;
-  curwin->w_pcmark = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  curwin->w_pcmark = *cursor;
 
   if (curwin->w_pcmark.lnum == 0) {
     curwin->w_pcmark.lnum = 1;
@@ -293,8 +296,9 @@ void setpcmark(void)
 // If pcmark was deleted (with "dG") the previous mark is restored.
 void checkpcmark(void)
 {
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   if (curwin->w_prev_pcmark.lnum != 0
-      && (equalpos(curwin->w_pcmark, curwin->w_cursor)
+      && (equalpos(curwin->w_pcmark, *cursor)
           || curwin->w_pcmark.lnum == 0)) {
     curwin->w_pcmark = curwin->w_prev_pcmark;
   }
@@ -525,20 +529,21 @@ fmark_T *mark_get_local(buf_T *buf, win_T *win, int name)
 fmark_T *mark_get_motion(buf_T *buf, win_T *win, int name)
 {
   fmark_T *mark = NULL;
-  const pos_T pos = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  const pos_T pos = *cursor;
   const bool slcb = listcmd_busy;
   listcmd_busy = true;  // avoid that '' is changed
   if (name == '{' || name == '}') {  // to previous/next paragraph
     oparg_T oa;
     if (findpar(&oa.inclusive, name == '}' ? FORWARD : BACKWARD, 1, NUL, false)) {
-      mark = pos_to_mark(buf, NULL, win->w_cursor);
+      mark = pos_to_mark(buf, NULL, WIN_PRIMCURS(win));
     }
   } else if (name == '(' || name == ')') {  // to previous/next sentence
     if (findsent(name == ')' ? FORWARD : BACKWARD, 1)) {
-      mark = pos_to_mark(buf, NULL, win->w_cursor);
+      mark = pos_to_mark(buf, NULL, WIN_PRIMCURS(win));
     }
   }
-  curwin->w_cursor = pos;
+  *cursor = pos;
   listcmd_busy = slcb;
   return mark;
 }
@@ -658,10 +663,11 @@ MarkMoveRes mark_move_to(fmark_T *fm, MarkMove flags)
     setpcmark();
   }
   // Move the cursor while keeping track of what changed for the caller
-  pos_T prev_pos = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T prev_pos = *cursor;
   pos_T pos = fm->mark;
   // Set lnum again, autocommands my have changed it
-  curwin->w_cursor = fm->mark;
+  *cursor = fm->mark;
   if (flags & kMarkBeginLine) {
     beginline(BL_WHITE | BL_FIX);
   }
@@ -1353,7 +1359,8 @@ void mark_adjust_buf(buf_T *buf, linenr_T line1, linenr_T line2, linenr_T amount
 
       // topline and cursor position for windows with the same buffer
       // other than the current window
-      if (by_api || (by_term ? win->w_cursor.lnum < buf->b_ml.ml_line_count : win != curwin)) {
+      pos_T *cursor = &WIN_PRIMCURS(win);
+      if (by_api || (by_term ? cursor->lnum < buf->b_ml.ml_line_count : win != curwin)) {
         if (win->w_topline >= line1 && win->w_topline <= line2) {
           if (amount == MAXLNUM) {                  // topline is deleted
             if (by_api && amount_after > line1 - line2 - 1) {
@@ -1376,8 +1383,8 @@ void mark_adjust_buf(buf_T *buf, linenr_T line1, linenr_T line2, linenr_T amount
           win->w_topfill = 0;
         }
       }
-      if (!by_api && (by_term ? win->w_cursor.lnum < buf->b_ml.ml_line_count : win != curwin)) {
-        ONE_ADJUST_CURSOR(&(win->w_cursor));
+      if (!by_api && (by_term ? cursor->lnum < buf->b_ml.ml_line_count : win != curwin)) {
+        ONE_ADJUST_CURSOR(cursor);
       }
 
       if (adjust_folds) {
@@ -1485,7 +1492,7 @@ void mark_col_adjust(linenr_T lnum, colnr_T mincol, linenr_T lnum_amount, colnr_
 
       // cursor position for other windows with the same buffer
       if (win != curwin) {
-        COL_ADJUST(&win->w_cursor);
+        COL_ADJUST(&WIN_PRIMCURS(win));
       }
     }
   }
@@ -1559,7 +1566,7 @@ void cleanup_jumplist(win_T *wp, bool loadfiles)
       && wp->w_jumplistlen && wp->w_jumplistidx == wp->w_jumplistlen) {
     const xfmark_T *fm_last = &wp->w_jumplist[wp->w_jumplistlen - 1];
     if (fm_last->fmark.fnum == curbuf->b_fnum
-        && fm_last->fmark.mark.lnum == wp->w_cursor.lnum) {
+        && fm_last->fmark.mark.lnum == WIN_PRIMCURS(wp).lnum) {
       xfree(fm_last->fname);
       wp->w_jumplistlen--;
       wp->w_jumplistidx--;
@@ -1797,7 +1804,7 @@ void free_jumplist(win_T *wp)
 void set_last_cursor(win_T *win)
 {
   if (win->w_buffer != NULL) {
-    RESET_FMARK(&win->w_buffer->b_last_cursor, win->w_cursor, 0, ((fmarkv_T)INIT_FMARKV));
+    RESET_FMARK(&win->w_buffer->b_last_cursor, WIN_PRIMCURS(win), 0, ((fmarkv_T)INIT_FMARKV));
   }
 }
 

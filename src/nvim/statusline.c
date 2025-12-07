@@ -437,6 +437,8 @@ void redraw_ruler(void)
   static bool did_show_ext_ruler = false;
   win_T *wp = curwin->w_status_height == 0 ? curwin : lastwin_nofloating();
   bool is_stl_global = global_stl_height() > 0;
+  selection_T *primsel = &WIN_PRIMSEL(wp);
+  pos_T *cursor = &primsel->cursor;
 
   // Check if ruler should be drawn, clear if it was drawn before.
   if (!p_ru || wp->w_status_height > 0 || is_stl_global || (p_ch == 0 && !ui_has(kUIMessages))) {
@@ -454,7 +456,7 @@ void redraw_ruler(void)
 
   // Check if cursor.lnum is valid, since redraw_ruler() may be called
   // after deleting lines, before cursor.lnum is corrected.
-  if (wp->w_cursor.lnum > wp->w_buffer->b_ml.ml_line_count) {
+  if (cursor->lnum > wp->w_buffer->b_ml.ml_line_count) {
     return;
   }
 
@@ -477,16 +479,16 @@ void redraw_ruler(void)
   int attr = win_hl_attr(wp, (int)group);
 
   // In list mode virtcol needs to be recomputed
-  colnr_T virtcol = wp->w_virtcol;
+  colnr_T virtcol = primsel->virtcol;
   if (wp->w_p_list && wp->w_p_lcs_chars.tab1 == NUL) {
     wp->w_p_list = false;
-    getvvcol(wp, &wp->w_cursor, NULL, &virtcol, NULL);
+    getvvcol(wp, cursor, NULL, &virtcol, NULL);
     wp->w_p_list = true;
   }
 
   // Check if not in Insert mode and the line is empty (will show "0-1").
   int empty_line = (State & MODE_INSERT) == 0
-                   && *ml_get_buf(wp->w_buffer, wp->w_cursor.lnum) == NUL;
+                   && *ml_get_buf(wp->w_buffer, cursor->lnum) == NUL;
 
 #define RULER_BUF_LEN 70
   char buffer[RULER_BUF_LEN];
@@ -497,9 +499,9 @@ void redraw_ruler(void)
   int bufferlen = vim_snprintf(buffer, RULER_BUF_LEN, _("%" PRId64 ","),
                                (wp->w_buffer->b_ml.ml_flags & ML_EMPTY)
                                ? 0
-                               : (int64_t)wp->w_cursor.lnum);
+                               : (int64_t)cursor->lnum);
   bufferlen += col_print(buffer + bufferlen, RULER_BUF_LEN - (size_t)bufferlen,
-                         empty_line ? 0 : (int)wp->w_cursor.col + 1,
+                         empty_line ? 0 : (int)cursor->col + 1,
                          (int)virtcol + 1);
 
   // Add a "50%" if there is room for it.
@@ -879,6 +881,9 @@ int build_stl_str_hl(win_T *wp, char *out, size_t outlen, char *fmt, OptIndex op
   static int *stl_separator_locations = NULL;
   static int curitem = 0;
 
+  selection_T *primsel = &WIN_PRIMSEL(wp);
+  pos_T *cursor = &primsel->cursor;
+
 #define TMPLEN 70
   char buf_tmp[TMPLEN];
   char *usefmt = fmt;
@@ -936,10 +941,10 @@ int build_stl_str_hl(win_T *wp, char *out, size_t outlen, char *fmt, OptIndex op
 
   // The cursor in windows other than the current one isn't always
   // up-to-date, esp. because of autocommands and timers.
-  linenr_T lnum = wp->w_cursor.lnum;
+  linenr_T lnum = cursor->lnum;
   if (lnum > wp->w_buffer->b_ml.ml_line_count) {
     lnum = wp->w_buffer->b_ml.ml_line_count;
-    wp->w_cursor.lnum = lnum;
+    cursor->lnum = lnum;
   }
 
   // Get line & check if empty (cursorpos will show "0-1").
@@ -950,14 +955,14 @@ int build_stl_str_hl(win_T *wp, char *out, size_t outlen, char *fmt, OptIndex op
   // efficient than making a copy of the line.
   int byteval;
   const colnr_T len = ml_get_buf_len(wp->w_buffer, lnum);
-  if (wp->w_cursor.col > len) {
+  if (cursor->col > len) {
     // Line may have changed since checking the cursor column, or the lnum
     // was adjusted above.
-    wp->w_cursor.col = len;
-    wp->w_cursor.coladd = 0;
+    cursor->col = len;
+    cursor->coladd = 0;
     byteval = 0;
   } else {
-    byteval = utf_ptr2char(line_ptr + wp->w_cursor.col);
+    byteval = utf_ptr2char(line_ptr + cursor->col);
   }
 
   int groupdepth = 0;
@@ -1467,7 +1472,7 @@ int build_stl_str_hl(win_T *wp, char *out, size_t outlen, char *fmt, OptIndex op
           stl_items[curitem++].start = out_p;
         }
       } else if (stcp == NULL) {
-        num = (wp->w_buffer->b_ml.ml_flags & ML_EMPTY) ? 0 : wp->w_cursor.lnum;
+        num = (wp->w_buffer->b_ml.ml_flags & ML_EMPTY) ? 0 : cursor->lnum;
       }
       break;
 
@@ -1476,16 +1481,16 @@ int build_stl_str_hl(win_T *wp, char *out, size_t outlen, char *fmt, OptIndex op
       break;
 
     case STL_COLUMN:
-      num = (State & MODE_INSERT) == 0 && empty_line ? 0 : (int)wp->w_cursor.col + 1;
+      num = (State & MODE_INSERT) == 0 && empty_line ? 0 : (int)cursor->col + 1;
       break;
 
     case STL_VIRTCOL:
     case STL_VIRTCOL_ALT: {
-      colnr_T virtcol = wp->w_virtcol + 1;
+      colnr_T virtcol = primsel->virtcol + 1;
       // Don't display %V if it's the same as %c.
       if (opt == STL_VIRTCOL_ALT
           && (virtcol == (colnr_T)((State & MODE_INSERT) == 0 && empty_line
-                                   ? 0 : (int)wp->w_cursor.col + 1))) {
+                                   ? 0 : (int)cursor->col + 1))) {
         break;
       }
       num = virtcol;
@@ -1493,7 +1498,7 @@ int build_stl_str_hl(win_T *wp, char *out, size_t outlen, char *fmt, OptIndex op
     }
 
     case STL_PERCENTAGE:
-      num = calc_percentage(wp->w_cursor.lnum, wp->w_buffer->b_ml.ml_line_count);
+      num = calc_percentage(cursor->lnum, wp->w_buffer->b_ml.ml_line_count);
       break;
 
     case STL_ALTPERCENT:
@@ -1536,11 +1541,11 @@ int build_stl_str_hl(win_T *wp, char *out, size_t outlen, char *fmt, OptIndex op
       base = kNumBaseHexadecimal;
       FALLTHROUGH;
     case STL_OFFSET: {
-      int l = ml_find_line_or_offset(wp->w_buffer, wp->w_cursor.lnum, NULL,
+      int l = ml_find_line_or_offset(wp->w_buffer, cursor->lnum, NULL,
                                      false);
       num = (wp->w_buffer->b_ml.ml_flags & ML_EMPTY) || l < 0
             ? 0 : l + 1 + ((State & MODE_INSERT) == 0 && empty_line
-                           ? 0 : (int)wp->w_cursor.col);
+                           ? 0 : (int)cursor->col);
       break;
     }
     case STL_BYTEVAL_X:

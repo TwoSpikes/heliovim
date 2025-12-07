@@ -1624,7 +1624,7 @@ char *grab_file_name(int count, linenr_T *file_lnum)
 char *file_name_at_cursor(int options, int count, linenr_T *file_lnum)
 {
   return file_name_in_line(get_cursor_line_ptr(),
-                           curwin->w_cursor.col, options, count, curbuf->b_ffname,
+                           WIN_PRIMCURS(curwin).col, options, count, curbuf->b_ffname,
                            file_lnum);
 }
 

@@ -643,8 +643,9 @@ int call_vim_function(const char *func, int argc, typval_T *argv, typval_T *rett
 
   rettv->v_type = VAR_UNKNOWN;  // tv_clear() uses this.
   funcexe_T funcexe = FUNCEXE_INIT;
-  funcexe.fe_firstline = curwin->w_cursor.lnum;
-  funcexe.fe_lastline = curwin->w_cursor.lnum;
+  pos_T cursor = WIN_PRIMCURS(curwin);
+  funcexe.fe_firstline = cursor.lnum;
+  funcexe.fe_lastline = cursor.lnum;
   funcexe.fe_evaluate = true;
   funcexe.fe_partial = pt;
   ret = call_func(func, len, rettv, argc, argv, &funcexe);
@@ -1700,6 +1701,7 @@ static int eval_func(char **const arg, evalarg_T *const evalarg, char *const nam
   char *s = name;
   int len = name_len;
   bool found_var = false;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   if (!evaluate) {
     check_vars(s, (size_t)len);
@@ -1716,8 +1718,8 @@ static int eval_func(char **const arg, evalarg_T *const evalarg, char *const nam
 
   // Invoke the function.
   funcexe_T funcexe = FUNCEXE_INIT;
-  funcexe.fe_firstline = curwin->w_cursor.lnum;
-  funcexe.fe_lastline = curwin->w_cursor.lnum;
+  funcexe.fe_firstline = cursor->lnum;
+  funcexe.fe_lastline = cursor->lnum;
   funcexe.fe_evaluate = evaluate;
   funcexe.fe_partial = partial;
   funcexe.fe_basetv = basetv;
@@ -2849,8 +2851,9 @@ static int call_func_rettv(char **const arg, evalarg_T *const evalarg, typval_T 
   }
 
   funcexe_T funcexe = FUNCEXE_INIT;
-  funcexe.fe_firstline = curwin->w_cursor.lnum;
-  funcexe.fe_lastline = curwin->w_cursor.lnum;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  funcexe.fe_firstline = cursor->lnum;
+  funcexe.fe_lastline = cursor->lnum;
   funcexe.fe_evaluate = evaluate;
   funcexe.fe_partial = pt;
   funcexe.fe_selfdict = selfdict;
@@ -4861,6 +4864,7 @@ bool callback_call(Callback *const callback, const int argcount_in, typval_T *co
 
   partial_T *partial;
   char *name;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   Array args = ARRAY_DICT_INIT;
   Object rv;
   switch (callback->type) {
@@ -4894,8 +4898,8 @@ bool callback_call(Callback *const callback, const int argcount_in, typval_T *co
   }
 
   funcexe_T funcexe = FUNCEXE_INIT;
-  funcexe.fe_firstline = curwin->w_cursor.lnum;
-  funcexe.fe_lastline = curwin->w_cursor.lnum;
+  funcexe.fe_firstline = cursor->lnum;
+  funcexe.fe_lastline = cursor->lnum;
   funcexe.fe_evaluate = true;
   funcexe.fe_partial = partial;
 
@@ -5266,6 +5270,7 @@ pos_T *var2fpos(const typval_T *const tv, const bool dollar_lnum, int *const ret
   FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_NONNULL_ALL
 {
   static pos_T pos;
+  pos_T *cursor = &WIN_PRIMCURS(wp);
 
   buf_T *bp = wp->w_buffer;
 
@@ -5329,13 +5334,13 @@ pos_T *var2fpos(const typval_T *const tv, const bool dollar_lnum, int *const ret
   pos.lnum = 0;
   if (name[0] == '.') {
     // cursor
-    pos = wp->w_cursor;
+    pos = *cursor;
   } else if (name[0] == 'v' && name[1] == NUL) {
     // Visual start
     if (VIsual_active && wp == curwin) {
       pos = VIsual;
     } else {
-      pos = wp->w_cursor;
+      pos = *cursor;
     }
   } else if (name[0] == '\'') {
     // mark
@@ -5380,11 +5385,11 @@ pos_T *var2fpos(const typval_T *const tv, const bool dollar_lnum, int *const ret
       pos.lnum = bp->b_ml.ml_line_count;
       pos.col = 0;
     } else {
-      pos.lnum = wp->w_cursor.lnum;
+      pos.lnum = cursor->lnum;
       if (charcol) {
-        pos.col = (colnr_T)mb_charlen(ml_get_buf(bp, wp->w_cursor.lnum));
+        pos.col = (colnr_T)mb_charlen(ml_get_buf(bp, cursor->lnum));
       } else {
-        pos.col = ml_get_buf_len(bp, wp->w_cursor.lnum);
+        pos.col = ml_get_buf_len(bp, cursor->lnum);
       }
     }
     return &pos;
@@ -5447,7 +5452,7 @@ int list2fpos(typval_T *arg, pos_T *posp, int *fnump, colnr_T *curswantp, bool c
       return FAIL;
     }
     n = buf_charidx_to_byteidx(buf,
-                               posp->lnum == 0 ? curwin->w_cursor.lnum : posp->lnum,
+                               posp->lnum == 0 ? WIN_PRIMCURS(curwin).lnum : posp->lnum,
                                n) + 1;
   }
   posp->col = n;
@@ -6532,8 +6537,9 @@ typval_T eval_call_provider(char *provider, char *method, list_T *arguments, boo
   tv_list_ref(arguments);
 
   funcexe_T funcexe = FUNCEXE_INIT;
-  funcexe.fe_firstline = curwin->w_cursor.lnum;
-  funcexe.fe_lastline = curwin->w_cursor.lnum;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  funcexe.fe_firstline = cursor->lnum;
+  funcexe.fe_lastline = cursor->lnum;
   funcexe.fe_evaluate = true;
   call_func(func, name_len, &rettv, 2, argvars, &funcexe);
 
@@ -6665,8 +6671,9 @@ void prompt_invoke_callback(void)
   // text can always be inserted above the last line.
   ml_append(lnum, "", 0, false);
   appended_lines_mark(lnum, 1);
-  curwin->w_cursor.lnum = lnum + 1;
-  curwin->w_cursor.col = 0;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  cursor->lnum = lnum + 1;
+  cursor->col = 0;
   curbuf->b_prompt_start.mark.lnum = lnum + 1;
 
   if (curbuf->b_prompt_callback.type == kCallbackNone) {

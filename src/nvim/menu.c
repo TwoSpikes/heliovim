@@ -1485,6 +1485,8 @@ void execute_menu(const exarg_T *eap, vimmenu_T *menu, int mode_idx)
       idx = MENU_INDEX_VISUAL;
     } else if (eap != NULL && eap->addr_count) {
       pos_T tpos;
+      selection_T *primsel = &WIN_PRIMSEL(curwin);
+      pos_T *cursor = &primsel->cursor;
 
       idx = MENU_INDEX_VISUAL;
 
@@ -1497,13 +1499,13 @@ void execute_menu(const exarg_T *eap, vimmenu_T *menu, int mode_idx)
         // Set it up for visual mode - equivalent to gv.
         VIsual_mode = curbuf->b_visual.vi_mode;
         tpos = curbuf->b_visual.vi_end;
-        curwin->w_cursor = curbuf->b_visual.vi_start;
-        curwin->w_curswant = curbuf->b_visual.vi_curswant;
+        *cursor = curbuf->b_visual.vi_start;
+        primsel->curswant = curbuf->b_visual.vi_curswant;
       } else {
         // Set it up for line-wise visual mode
         VIsual_mode = 'V';
-        curwin->w_cursor.lnum = eap->line1;
-        curwin->w_cursor.col = 1;
+        cursor->lnum = eap->line1;
+        cursor->col = 1;
         tpos.lnum = eap->line2;
         tpos.col = MAXCOL;
         tpos.coladd = 0;
@@ -1513,15 +1515,15 @@ void execute_menu(const exarg_T *eap, vimmenu_T *menu, int mode_idx)
       VIsual_active = true;
       VIsual_reselect = true;
       check_cursor(curwin);
-      VIsual = curwin->w_cursor;
-      curwin->w_cursor = tpos;
+      VIsual = *cursor;
+      *cursor = tpos;
 
       check_cursor(curwin);
 
       // Adjust the cursor to make sure it is in the correct pos
       // for exclusive mode
       if (*p_sel == 'e' && gchar_cursor() != NUL) {
-        curwin->w_cursor.col++;
+        cursor->col++;
       }
     }
   }

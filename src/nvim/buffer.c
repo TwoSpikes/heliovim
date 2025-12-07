@@ -198,8 +198,8 @@ static int read_buffer(bool read_stdin, exarg_T *eap, int flags)
     }
   }
   // Put the cursor on the first line.
-  curwin->w_cursor.lnum = 1;
-  curwin->w_cursor.col = 0;
+  WIN_PRIMCURS(curwin).lnum = 1;
+  WIN_PRIMCURS(curwin).col = 0;
 
   if (read_stdin) {
     // Set or reset 'modified' before executing autocommands, so that
@@ -597,9 +597,10 @@ bool close_buffer(win_T *win, buf_T *buf, int action, bool abort_if_last, bool i
     if (buf->b_nwindows == 1) {
       set_last_cursor(win);
     }
+    pos_T cursor = WIN_PRIMCURS(win);
     buflist_setfpos(buf, win,
-                    win->w_cursor.lnum == 1 ? 0 : win->w_cursor.lnum,
-                    win->w_cursor.col, true);
+                    cursor.lnum == 1 ? 0 : cursor.lnum,
+                    cursor.col, true);
   }
 
   bufref_T bufref;
@@ -1776,10 +1777,12 @@ static void enter_buffer(buf_T *buf)
 
   curwin->w_s = &(curbuf->b_s);
 
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   // Cursor on first line by default.
-  curwin->w_cursor.lnum = 1;
-  curwin->w_cursor.col = 0;
-  curwin->w_cursor.coladd = 0;
+  cursor->lnum = 1;
+  cursor->col = 0;
+  cursor->coladd = 0;
   curwin->w_set_curswant = true;
   curwin->w_topline_was_set = false;
 
@@ -1811,7 +1814,7 @@ static void enter_buffer(buf_T *buf)
 
   // If autocommands did not change the cursor position, restore cursor lnum
   // and possibly cursor col.
-  if (curwin->w_cursor.lnum == 1 && inindent(0)) {
+  if (cursor->lnum == 1 && inindent(0)) {
     buflist_getfpos();
   }
 
@@ -2268,9 +2271,11 @@ int buflist_getfile(int n, linenr_T lnum, int options, int forceit)
 
     // cursor is at to BOL and w_cursor.lnum is checked due to getfile()
     if (!p_sol && col != 0) {
-      curwin->w_cursor.col = col;
+      pos_T *cursor = &WIN_PRIMCURS(curwin);
+
+      cursor->col = col;
       check_cursor_col(curwin);
-      curwin->w_cursor.coladd = 0;
+      cursor->coladd = 0;
       curwin->w_set_curswant = true;
     }
     if (jop_flags & kOptJopFlagView && restore_view) {
@@ -2287,16 +2292,17 @@ static void buflist_getfpos(void)
 {
   fmark_T *fm = buflist_findfmark(curbuf);
   const pos_T *fpos = &fm->mark;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
-  curwin->w_cursor.lnum = fpos->lnum;
+  cursor->lnum = fpos->lnum;
   check_cursor_lnum(curwin);
 
   if (p_sol) {
-    curwin->w_cursor.col = 0;
+    cursor->col = 0;
   } else {
-    curwin->w_cursor.col = fpos->col;
+    cursor->col = fpos->col;
     check_cursor_col(curwin);
-    curwin->w_cursor.coladd = 0;
+    cursor->coladd = 0;
     curwin->w_set_curswant = true;
   }
 
@@ -2990,7 +2996,7 @@ void buflist_list(exarg_T *eap)
       undo_fmt_time(IObuff + len, (size_t)(IOSIZE - len), buf->b_last_used);
     } else {
       vim_snprintf(IObuff + len, (size_t)(IOSIZE - len), _("line %" PRId64),
-                   buf == curbuf ? (int64_t)curwin->w_cursor.lnum : (int64_t)buflist_findlnum(buf));
+                   buf == curbuf ? (int64_t)WIN_PRIMCURS(curwin).lnum : (int64_t)buflist_findlnum(buf));
     }
 
     msg_outtrans(IObuff, 0, false);
@@ -3204,7 +3210,8 @@ void buflist_slash_adjust(void)
 /// Also save the local window option values.
 void buflist_altfpos(win_T *win)
 {
-  buflist_setfpos(curbuf, win, win->w_cursor.lnum, win->w_cursor.col, true);
+  pos_T *cursor = &WIN_PRIMCURS(win);
+  buflist_setfpos(curbuf, win, cursor->lnum, cursor->col, true);
 }
 
 /// Check that "ffname" is not the same file as current file.
@@ -3295,6 +3302,8 @@ void fileinfo(int fullname, int shorthelp, bool dont_truncate)
 {
   char *buffer = xmalloc(IOSIZE);
   size_t bufferlen = 0;
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
 
   if (fullname > 1) {       // 2 CTRL-G: include buffer number
     bufferlen = vim_snprintf_safelen(buffer, IOSIZE, "buf %d: ", curbuf->b_fnum);
@@ -3345,19 +3354,19 @@ void fileinfo(int fullname, int shorthelp, bool dont_truncate)
                                                "%" PRId64 " lines --%d%%--",
                                                curbuf->b_ml.ml_line_count),
                                       (int64_t)curbuf->b_ml.ml_line_count,
-                                      calc_percentage(curwin->w_cursor.lnum,
+                                      calc_percentage(cursor->lnum,
                                                       curbuf->b_ml.ml_line_count));
   } else {
     bufferlen += vim_snprintf_safelen(buffer + bufferlen,
                                       IOSIZE - bufferlen,
                                       _("line %" PRId64 " of %" PRId64 " --%d%%-- col "),
-                                      (int64_t)curwin->w_cursor.lnum,
+                                      (int64_t)cursor->lnum,
                                       (int64_t)curbuf->b_ml.ml_line_count,
-                                      calc_percentage(curwin->w_cursor.lnum,
+                                      calc_percentage(cursor->lnum,
                                                       curbuf->b_ml.ml_line_count));
     validate_virtcol(curwin);
     bufferlen += (size_t)col_print(buffer + bufferlen, IOSIZE - bufferlen,
-                                   curwin->w_cursor.col + 1, curwin->w_virtcol + 1);
+                                   cursor->col + 1, primsel->virtcol + 1);
   }
 
   append_arg_number(curwin, buffer + bufferlen, IOSIZE - bufferlen);

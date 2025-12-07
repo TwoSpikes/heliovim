@@ -34,3 +34,17 @@ typedef struct {
   linenr_T lnum;        ///< line number
   colnr_T col;          ///< column number
 } lpos_T;
+
+typedef struct {
+  pos_T anchor;
+  pos_T cursor;
+  pos_T valid_cursor;
+
+  colnr_T curswant;
+  colnr_T virtcol;   // column number of the cursor in the
+                       // buffer line, as opposed to the column
+                       // number we're at on the screen.  This
+                       // makes a difference on lines which span
+                       // more than one screen line or when
+                       // w_leftcol is non-zero
+} selection_T;

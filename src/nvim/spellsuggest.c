@@ -438,7 +438,8 @@ int spell_check_sps(void)
 /// When "count" is non-zero use that suggestion.
 void spell_suggest(int count)
 {
-  pos_T prev_cursor = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T prev_cursor = *cursor;
   char wcopy[MAXWLEN + 2];
   suginfo_T sug;
   suggest_T *stp;
@@ -461,28 +462,28 @@ void spell_suggest(int count)
   if (VIsual_active) {
     // Use the Visually selected text as the bad word.  But reject
     // a multi-line selection.
-    if (curwin->w_cursor.lnum != VIsual.lnum) {
+    if (cursor->lnum != VIsual.lnum) {
       vim_beep(kOptBoFlagSpell);
       return;
     }
-    badlen = (int)curwin->w_cursor.col - (int)VIsual.col;
+    badlen = (int)cursor->col - (int)VIsual.col;
     if (badlen < 0) {
       badlen = -badlen;
     } else {
-      curwin->w_cursor.col = VIsual.col;
+      cursor->col = VIsual.col;
     }
     badlen++;
     end_visual_mode();
     // make sure we don't include the NUL at the end of the line
-    badlen = MIN(badlen, get_cursor_line_len() - curwin->w_cursor.col);
+    badlen = MIN(badlen, get_cursor_line_len() - cursor->col);
     // Find the start of the badly spelled word.
   } else if (spell_move_to(curwin, FORWARD, SMT_ALL, true, NULL) == 0
-             || curwin->w_cursor.col > prev_cursor.col) {
+             || cursor->col > prev_cursor.col) {
     // No bad word or it starts after the cursor: use the word under the
     // cursor.
-    curwin->w_cursor = prev_cursor;
+    *cursor = prev_cursor;
     char *line = get_cursor_line_ptr();
-    char *p = line + curwin->w_cursor.col;
+    char *p = line + cursor->col;
     // Backup to before start of word.
     while (p > line && spell_iswordp_nmw(p, curwin)) {
       MB_PTR_BACK(line, p);
@@ -496,13 +497,13 @@ void spell_suggest(int count)
       beep_flush();
       return;
     }
-    curwin->w_cursor.col = (colnr_T)(p - line);
+    cursor->col = (colnr_T)(p - line);
   }
 
   // Get the word and its length.
 
   // Figure out if the word should be capitalised.
-  int need_cap = check_need_cap(curwin, curwin->w_cursor.lnum, curwin->w_cursor.col);
+  int need_cap = check_need_cap(curwin, cursor->lnum, cursor->col);
 
   // Make a copy of current line since autocommands may free the line.
   char *line = xstrnsave(get_cursor_line_ptr(), (size_t)get_cursor_line_len());
@@ -511,7 +512,7 @@ void spell_suggest(int count)
   // Get the list of suggestions.  Limit to 'lines' - 2 or the number in
   // 'spellsuggest', whatever is smaller.
   int limit = MIN(sps_limit, Rows - 2);
-  spell_find_suggest(line + curwin->w_cursor.col, badlen, &sug, limit,
+  spell_find_suggest(line + cursor->col, badlen, &sug, limit,
                      true, need_cap, true);
 
   msg_ext_set_kind("confirm");
@@ -639,12 +640,12 @@ void spell_suggest(int count)
     AppendCharToRedobuff(ESC);
 
     // "p" may be freed here
-    ml_replace(curwin->w_cursor.lnum, p, false);
-    curwin->w_cursor.col = c;
+    ml_replace(cursor->lnum, p, false);
+    cursor->col = c;
 
-    inserted_bytes(curwin->w_cursor.lnum, c, stp->st_orglen, stp->st_wordlen);
+    inserted_bytes(cursor->lnum, c, stp->st_orglen, stp->st_wordlen);
   } else {
-    curwin->w_cursor = prev_cursor;
+    *cursor = prev_cursor;
   }
 
   spell_find_cleanup(&sug);

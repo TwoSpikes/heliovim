@@ -281,12 +281,13 @@ void do_exmode(void)
     ex_no_reprint = false;
     varnumber_T changedtick = buf_get_changedtick(curbuf);
     int prev_msg_row = msg_row;
-    linenr_T prev_line = curwin->w_cursor.lnum;
+    pos_T *cursor = &WIN_PRIMCURS(curwin);
+    linenr_T prev_line = cursor->lnum;
     cmdline_row = msg_row;
     do_cmdline(NULL, getexline, NULL, 0);
     lines_left = Rows - 1;
 
-    if ((prev_line != curwin->w_cursor.lnum
+    if ((prev_line != cursor->lnum
          || changedtick != buf_get_changedtick(curbuf)) && !ex_no_reprint) {
       if (curbuf->b_ml.ml_flags & ML_EMPTY) {
         emsg(_(e_empty_buffer));
@@ -302,7 +303,7 @@ void do_exmode(void)
           }
         }
         msg_col = 0;
-        print_line_no_prefix(curwin->w_cursor.lnum, false, false);
+        print_line_no_prefix(cursor->lnum, false, false);
         msg_clr_eos();
       }
     } else if (ex_pressedreturn && !ex_no_reprint) {  // must be at EOF
@@ -1304,7 +1305,7 @@ linenr_T get_cmd_default_range(exarg_T *eap)
   case ADDR_OTHER:
     // Default is the cursor line number.  Avoid using an invalid
     // line number though.
-    return MIN(curwin->w_cursor.lnum, curbuf->b_ml.ml_line_count);
+    return MIN(WIN_PRIMCURS(curwin).lnum, curbuf->b_ml.ml_line_count);
     break;
   case ADDR_WINDOWS:
     return CURRENT_WIN_NR;
@@ -1536,7 +1537,7 @@ bool parse_cmdline(char **cmdline, exarg_T *eap, CmdParseInfo *cmdinfo, const ch
   // parsing the command modifiers may set ex_pressedreturn
   const bool save_ex_pressedreturn = ex_pressedreturn;
   // parsing the command range may require moving the cursor
-  const pos_T save_cursor = curwin->w_cursor;
+  const pos_T save_cursor = WIN_PRIMCURS(curwin);
   // parsing the command range may set the last search pattern
   save_last_search_pattern();
 
@@ -1665,7 +1666,7 @@ end:
     undo_cmdmod(&cmdinfo->cmdmod);
   }
   ex_pressedreturn = save_ex_pressedreturn;
-  curwin->w_cursor = save_cursor;
+  WIN_PRIMCURS(curwin) = save_cursor;
   restore_last_search_pattern();
   return retval;
 }
@@ -2017,6 +2018,7 @@ static char *do_one_cmd(char **cmdlinep, int flags, cstack_T *cstack, LineGetter
   const char *errormsg = NULL;  // error message
   const int save_reg_executing = reg_executing;
   const bool save_pending_end_reg_executing = pending_end_reg_executing;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   exarg_T ea = {
     .line1 = 1,
@@ -2412,9 +2414,9 @@ static char *do_one_cmd(char **cmdlinep, int flags, cstack_T *cstack, LineGetter
 
 doend:
   // can happen with zero line number
-  if (curwin->w_cursor.lnum == 0) {
-    curwin->w_cursor.lnum = 1;
-    curwin->w_cursor.col = 0;
+  if (cursor->lnum == 0) {
+    cursor->lnum = 1;
+    cursor->col = 0;
   }
 
   if (errormsg != NULL && *errormsg != NUL && !did_emsg) {
@@ -2467,6 +2469,7 @@ static char exmode_plus[] = "+";
 static char *ex_range_without_command(exarg_T *eap)
 {
   char *errormsg = NULL;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   if (*eap->cmd == '|' || (exmode_active && eap->cmd != exmode_plus + 1)) {
     eap->cmdidx = CMD_print;
@@ -2482,9 +2485,9 @@ static char *ex_range_without_command(exarg_T *eap)
       errormsg = _(e_invrange);
     } else {
       if (eap->line2 == 0) {
-        curwin->w_cursor.lnum = 1;
+        cursor->lnum = 1;
       } else {
-        curwin->w_cursor.lnum = eap->line2;
+        cursor->lnum = eap->line2;
       }
       beginline(BL_SOL | BL_FIX);
     }
@@ -2517,6 +2520,8 @@ int parse_command_modifiers(exarg_T *eap, const char **errormsg, cmdmod_T *cmod,
   bool has_visual_range = false;
   CLEAR_POINTER(cmod);
 
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   if (strncmp(eap->cmd, "'<,'>", 5) == 0) {
     // The automatically inserted Visual area range is skipped, so that
     // typing ":cmdmod cmd" in Visual mode works without having to move the
@@ -2538,7 +2543,7 @@ int parse_command_modifiers(exarg_T *eap, const char **errormsg, cmdmod_T *cmod,
     // in ex mode, an empty command (after modifiers) works like :+
     if (*eap->cmd == NUL && exmode_active
         && getline_equal(eap->ea_getline, eap->cookie, getexline)
-        && curwin->w_cursor.lnum < curbuf->b_ml.ml_line_count) {
+        && cursor->lnum < curbuf->b_ml.ml_line_count) {
       eap->cmd = exmode_plus;
       use_plus_cmd = true;
       if (!skip_only) {
@@ -3007,7 +3012,7 @@ int parse_cmd_address(exarg_T *eap, const char **errormsg, bool silent)
 
     if (*eap->cmd == ';') {
       if (!eap->skip) {
-        curwin->w_cursor.lnum = eap->line2;
+        WIN_PRIMCURS(curwin).lnum = eap->line2;
 
         // Don't leave the cursor on an illegal line or column, but do
         // accept zero as address, so 0;/PATTERN/ works correctly
@@ -3461,6 +3466,7 @@ linenr_T get_address(exarg_T *eap, char **ptr, cmd_addr_T addr_type, bool skip, 
   linenr_T n;
   pos_T pos;
   buf_T *buf;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   char *cmd = skipwhite(*ptr);
   linenr_T lnum = MAXLNUM;
@@ -3471,7 +3477,7 @@ linenr_T get_address(exarg_T *eap, char **ptr, cmd_addr_T addr_type, bool skip, 
       switch (addr_type) {
       case ADDR_LINES:
       case ADDR_OTHER:
-        lnum = curwin->w_cursor.lnum;
+        lnum = cursor->lnum;
         break;
       case ADDR_WINDOWS:
         lnum = CURRENT_WIN_NR;
@@ -3574,7 +3580,7 @@ linenr_T get_address(exarg_T *eap, char **ptr, cmd_addr_T addr_type, bool skip, 
         if (fm != NULL && fm->fnum != curbuf->handle) {
           mark_move_to(fm, 0);
           // Jumped to another file.
-          lnum = curwin->w_cursor.lnum;
+          lnum = cursor->lnum;
         } else {
           if (!mark_check(fm, errormsg)) {
             cmd = NULL;
@@ -3602,12 +3608,12 @@ linenr_T get_address(exarg_T *eap, char **ptr, cmd_addr_T addr_type, bool skip, 
       } else {
         int flags;
 
-        pos = curwin->w_cursor;  // save curwin->w_cursor
+        pos = *cursor;  // save *cursor
 
         // When '/' or '?' follows another address, start from
         // there.
         if (lnum > 0 && lnum != MAXLNUM) {
-          curwin->w_cursor.lnum
+          cursor->lnum
             = lnum > curbuf->b_ml.ml_line_count ? curbuf->b_ml.ml_line_count : lnum;
         }
 
@@ -3617,16 +3623,16 @@ linenr_T get_address(exarg_T *eap, char **ptr, cmd_addr_T addr_type, bool skip, 
         // This makes sure we never match in the current
         // line, and can match anywhere in the
         // next/previous line.
-        curwin->w_cursor.col = (c == '/' && curwin->w_cursor.lnum > 0) ? MAXCOL : 0;
+        cursor->col = (c == '/' && cursor->lnum > 0) ? MAXCOL : 0;
         searchcmdlen = 0;
         flags = silent ? SEARCH_KEEP : SEARCH_HIS | SEARCH_MSG;
         if (!do_search(NULL, c, c, cmd, strlen(cmd), 1, flags, NULL)) {
-          curwin->w_cursor = pos;
+          *cursor = pos;
           cmd = NULL;
           goto error;
         }
-        lnum = curwin->w_cursor.lnum;
-        curwin->w_cursor = pos;
+        lnum = cursor->lnum;
+        *cursor = pos;
         // adjust command string pointer
         cmd += searchcmdlen;
       }
@@ -3651,7 +3657,7 @@ linenr_T get_address(exarg_T *eap, char **ptr, cmd_addr_T addr_type, bool skip, 
 
       if (!skip) {
         // When search follows another address, start from there.
-        pos.lnum = (lnum != MAXLNUM) ? lnum : curwin->w_cursor.lnum;
+        pos.lnum = (lnum != MAXLNUM) ? lnum : cursor->lnum;
         // Start the search just like for the above do_search().
         pos.col = (*cmd != '?') ? MAXCOL : 0;
         pos.coladd = 0;
@@ -3684,7 +3690,7 @@ linenr_T get_address(exarg_T *eap, char **ptr, cmd_addr_T addr_type, bool skip, 
         case ADDR_LINES:
         case ADDR_OTHER:
           // "+1" is same as ".+1"
-          lnum = curwin->w_cursor.lnum;
+          lnum = cursor->lnum;
           break;
         case ADDR_WINDOWS:
           lnum = CURRENT_WIN_NR;
@@ -5321,6 +5327,8 @@ static void ex_exit(exarg_T *eap)
 /// ":print", ":list", ":number".
 static void ex_print(exarg_T *eap)
 {
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   if (curbuf->b_ml.ml_flags & ML_EMPTY) {
     emsg(_(e_empty_buffer));
   } else {
@@ -5334,7 +5342,7 @@ static void ex_print(exarg_T *eap)
     }
     setpcmark();
     // put cursor at last line
-    curwin->w_cursor.lnum = eap->line2;
+    cursor->lnum = eap->line2;
     beginline(BL_SOL | BL_FIX);
   }
 
@@ -6065,8 +6073,8 @@ static void ex_swapname(exarg_T *eap)
 static void ex_syncbind(exarg_T *eap)
 {
   linenr_T vtopline;  // Target topline (including fill)
-
-  linenr_T old_linenr = curwin->w_cursor.lnum;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  linenr_T old_linenr = cursor->lnum;
 
   setpcmark();
 
@@ -6104,7 +6112,7 @@ static void ex_syncbind(exarg_T *eap)
   if (curwin->w_p_scb) {
     did_syncbind = true;
     checkpcmark();
-    if (old_linenr != curwin->w_cursor.lnum) {
+    if (old_linenr != cursor->lnum) {
       char ctrl_o[2];
 
       ctrl_o[0] = Ctrl_O;
@@ -6117,6 +6125,7 @@ static void ex_syncbind(exarg_T *eap)
 static void ex_read(exarg_T *eap)
 {
   int empty = (curbuf->b_ml.ml_flags & ML_EMPTY);
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   if (eap->usefilter) {  // :r!cmd
     do_bang(1, eap, false, false, true);
@@ -6157,9 +6166,9 @@ static void ex_read(exarg_T *eap)
       }
       if (*ml_get(lnum) == NUL && u_savedel(lnum, 1) == OK) {
         ml_delete(lnum);
-        if (curwin->w_cursor.lnum > 1
-            && curwin->w_cursor.lnum >= lnum) {
-          curwin->w_cursor.lnum--;
+        if (cursor->lnum > 1
+            && cursor->lnum >= lnum) {
+          cursor->lnum--;
         }
         deleted_lines_mark(lnum, 1);
       }
@@ -6472,6 +6481,7 @@ static void ex_wincmd(exarg_T *eap)
 static void ex_operators(exarg_T *eap)
 {
   oparg_T oa;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   clear_oparg(&oa);
   oa.regname = eap->regname;
@@ -6482,7 +6492,7 @@ static void ex_operators(exarg_T *eap)
   virtual_op = kFalse;
   if (eap->cmdidx != CMD_yank) {  // position cursor for undo
     setpcmark();
-    curwin->w_cursor.lnum = eap->line1;
+    cursor->lnum = eap->line1;
     beginline(BL_SOL | BL_FIX);
   }
 
@@ -6523,7 +6533,7 @@ static void ex_put(exarg_T *eap)
     eap->line2 = 1;
     eap->forceit = true;
   }
-  curwin->w_cursor.lnum = eap->line2;
+  WIN_PRIMCURS(curwin).lnum = eap->line2;
   check_cursor_col(curwin);
   do_put(eap->regname, NULL, eap->forceit ? BACKWARD : FORWARD, 1,
          PUT_LINE|PUT_CURSLINE);
@@ -6537,7 +6547,7 @@ static void ex_iput(exarg_T *eap)
     eap->line2 = 1;
     eap->forceit = true;
   }
-  curwin->w_cursor.lnum = eap->line2;
+  WIN_PRIMCURS(curwin).lnum = eap->line2;
   check_cursor_col(curwin);
   do_put(eap->regname, NULL, eap->forceit ? BACKWARD : FORWARD, 1L,
          PUT_LINE|PUT_CURSLINE|PUT_FIXINDENT);
@@ -6579,7 +6589,7 @@ static void ex_copymove(exarg_T *eap)
 void ex_may_print(exarg_T *eap)
 {
   if (eap->flags != 0) {
-    print_line(curwin->w_cursor.lnum, (eap->flags & EXFLAG_NR),
+    print_line(WIN_PRIMCURS(curwin).lnum, (eap->flags & EXFLAG_NR),
                (eap->flags & EXFLAG_LIST), true);
     ex_no_reprint = true;
   }
@@ -6610,7 +6620,7 @@ static int ex_submagic_preview(exarg_T *eap, int cmdpreview_ns, handle_T cmdprev
 /// ":join".
 static void ex_join(exarg_T *eap)
 {
-  curwin->w_cursor.lnum = eap->line1;
+  WIN_PRIMCURS(curwin).lnum = eap->line1;
   if (eap->line1 == eap->line2) {
     if (eap->addr_count >= 2) {     // :2,2join does nothing
       return;
@@ -6630,8 +6640,9 @@ static void ex_join(exarg_T *eap)
 static void ex_at(exarg_T *eap)
 {
   int prev_len = typebuf.tb_len;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
-  curwin->w_cursor.lnum = eap->line2;
+  cursor->lnum = eap->line2;
   check_cursor_col(curwin);
 
   // Get the register name. No name means use the previous one.
@@ -6995,13 +7006,14 @@ static void ex_mark(exarg_T *eap)
     return;
   }
 
-  pos_T pos = curwin->w_cursor;             // save curwin->w_cursor
-  curwin->w_cursor.lnum = eap->line2;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T pos = *cursor;             // save *cursor
+  cursor->lnum = eap->line2;
   beginline(BL_WHITE | BL_FIX);
   if (setmark(*eap->arg) == FAIL) {   // set mark
     emsg(_("E191: Argument must be a letter or forward/backward quote"));
   }
-  curwin->w_cursor = pos;             // restore curwin->w_cursor
+  *cursor = pos;             // restore *cursor
 }
 
 /// Update w_topline, w_leftcol and the cursor position.
@@ -7130,10 +7142,11 @@ static void ex_normal(exarg_T *eap)
     // Repeat the :normal command for each line in the range.  When no
     // range given, execute it just once, without positioning the cursor
     // first.
+    pos_T *cursor = &WIN_PRIMCURS(curwin);
     do {
       if (eap->addr_count != 0) {
-        curwin->w_cursor.lnum = eap->line1++;
-        curwin->w_cursor.col = 0;
+        cursor->lnum = eap->line1++;
+        cursor->col = 0;
         check_cursor_moved(curwin);
       }
 
@@ -7157,10 +7170,13 @@ static void ex_normal(exarg_T *eap)
 /// ":startinsert", ":startreplace" and ":startgreplace"
 static void ex_startinsert(exarg_T *eap)
 {
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+
   if (eap->forceit) {
     // cursor line can be zero on startup
-    if (!curwin->w_cursor.lnum) {
-      curwin->w_cursor.lnum = 1;
+    if (!cursor->lnum) {
+      cursor->lnum = 1;
     }
     set_cursor_for_append_to_line();
   }
@@ -7183,7 +7199,7 @@ static void ex_startinsert(exarg_T *eap)
     if (eap->cmdidx == CMD_startinsert) {
       restart_edit = 'i';
     }
-    curwin->w_curswant = 0;  // avoid MAXCOL
+    primsel->curswant = 0;  // avoid MAXCOL
   }
 
   if (VIsual_active) {

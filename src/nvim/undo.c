@@ -240,7 +240,7 @@ static void u_check(int newhead_may_be_NULL)
 /// Returns OK or FAIL.
 int u_save_cursor(void)
 {
-  linenr_T cur = curwin->w_cursor.lnum;
+  linenr_T cur = WIN_PRIMCURS(curwin).lnum;
   linenr_T top = cur > 0 ? cur - 1 : 0;
   linenr_T bot = cur + 1;
 
@@ -378,6 +378,7 @@ int u_savecommon(buf_T *buf, linenr_T top, linenr_T bot, linenr_T newbot, bool r
   u_check(false);
 #endif
 
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   u_entry_T *uep;
   u_entry_T *prev_uep;
   linenr_T size = bot - top - 1;
@@ -471,8 +472,8 @@ int u_savecommon(buf_T *buf, linenr_T top, linenr_T bot, linenr_T newbot, bool r
     uhp->uh_walk = 0;
     uhp->uh_entry = NULL;
     uhp->uh_getbot_entry = NULL;
-    uhp->uh_cursor = curwin->w_cursor;          // save cursor pos. for undo
-    if (virtual_active(curwin) && curwin->w_cursor.coladd > 0) {
+    uhp->uh_cursor = *cursor;          // save cursor pos. for undo
+    if (virtual_active(curwin) && cursor->coladd > 0) {
       uhp->uh_cursor_vcol = getviscol();
     } else {
       uhp->uh_cursor_vcol = -1;
@@ -2251,7 +2252,8 @@ static void u_undoredo(bool undo, bool do_buf_event)
 {
   char **newarray = NULL;
   linenr_T newlnum = MAXLNUM;
-  pos_T new_curpos = curwin->w_cursor;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  pos_T new_curpos = *cursor;
   u_entry_T *nuep;
   u_entry_T *newlist = NULL;
   fmark_T namedm[NMARKS];
@@ -2435,7 +2437,7 @@ static void u_undoredo(bool undo, bool do_buf_event)
   // Finish adjusting extmarks
 
   // Set the cursor to the desired position.  Check that the line is valid.
-  curwin->w_cursor = new_curpos;
+  *cursor = new_curpos;
   check_cursor_lnum(curwin);
 
   curhead->uh_entry = newlist;
@@ -2476,17 +2478,17 @@ static void u_undoredo(bool undo, bool do_buf_event)
   // If the cursor is only off by one line, put it at the same position as
   // before starting the change (for the "o" command).
   // Otherwise the cursor should go to the first undone line.
-  if (curhead->uh_cursor.lnum + 1 == curwin->w_cursor.lnum
-      && curwin->w_cursor.lnum > 1) {
-    curwin->w_cursor.lnum--;
+  if (curhead->uh_cursor.lnum + 1 == cursor->lnum
+      && cursor->lnum > 1) {
+    cursor->lnum--;
   }
-  if (curwin->w_cursor.lnum <= curbuf->b_ml.ml_line_count) {
-    if (curhead->uh_cursor.lnum == curwin->w_cursor.lnum) {
-      curwin->w_cursor.col = curhead->uh_cursor.col;
+  if (cursor->lnum <= curbuf->b_ml.ml_line_count) {
+    if (curhead->uh_cursor.lnum == cursor->lnum) {
+      cursor->col = curhead->uh_cursor.col;
       if (virtual_active(curwin) && curhead->uh_cursor_vcol >= 0) {
         coladvance(curwin, curhead->uh_cursor_vcol);
       } else {
-        curwin->w_cursor.coladd = 0;
+        cursor->coladd = 0;
       }
     } else {
       beginline(BL_SOL | BL_FIX);
@@ -2496,8 +2498,8 @@ static void u_undoredo(bool undo, bool do_buf_event)
     // after adding lines at the end of the file, and then undoing it).
     // check_cursor() will move the cursor to the last line.  Move it to
     // the first column here.
-    curwin->w_cursor.col = 0;
-    curwin->w_cursor.coladd = 0;
+    cursor->col = 0;
+    cursor->coladd = 0;
   }
 
   // Make sure the cursor is on an existing line and column.
@@ -3012,10 +3014,11 @@ static void u_saveline(buf_T *buf, linenr_T lnum)
   if (lnum < 1 || lnum > buf->b_ml.ml_line_count) {  // should never happen
     return;
   }
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   u_clearline(buf);
   buf->b_u_line_lnum = lnum;
-  if (curwin->w_buffer == buf && curwin->w_cursor.lnum == lnum) {
-    buf->b_u_line_colnr = curwin->w_cursor.col;
+  if (curwin->w_buffer == buf && cursor->lnum == lnum) {
+    buf->b_u_line_colnr = cursor->col;
   } else {
     buf->b_u_line_colnr = 0;
   }
@@ -3053,6 +3056,7 @@ void u_undoline(void)
   }
 
   char *oldp = u_save_line(curbuf->b_u_line_lnum);
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
   ml_replace(curbuf->b_u_line_lnum, curbuf->b_u_line_ptr, true);
   extmark_splice_cols(curbuf, (int)curbuf->b_u_line_lnum - 1, 0, (colnr_T)strlen(oldp),
                       (colnr_T)strlen(curbuf->b_u_line_ptr), kExtmarkUndo);
@@ -3061,11 +3065,11 @@ void u_undoline(void)
   curbuf->b_u_line_ptr = oldp;
 
   colnr_T t = curbuf->b_u_line_colnr;
-  if (curwin->w_cursor.lnum == curbuf->b_u_line_lnum) {
-    curbuf->b_u_line_colnr = curwin->w_cursor.col;
+  if (cursor->lnum == curbuf->b_u_line_lnum) {
+    curbuf->b_u_line_colnr = cursor->col;
   }
-  curwin->w_cursor.col = t;
-  curwin->w_cursor.lnum = curbuf->b_u_line_lnum;
+  cursor->col = t;
+  cursor->lnum = curbuf->b_u_line_lnum;
   check_cursor_col(curwin);
 }
 

@@ -660,7 +660,7 @@ wingotofile:
       }
 
       if (wp != NULL && nchar == 'F' && lnum >= 0) {
-        curwin->w_cursor.lnum = lnum;
+        WIN_PRIMCURS(curwin).lnum = lnum;
         check_cursor_lnum(curwin);
         beginline(BL_SOL | BL_FIX);
       }
@@ -1025,8 +1025,9 @@ void ui_ext_win_viewport(win_T *wp)
       // interact with incomplete final line? Diff filler lines?
       ev_botline = line_count;
     }
+    pos_T *cursor = &WIN_PRIMCURS(wp);
     ui_call_win_viewport(wp->w_grid_alloc.handle, wp->handle, wp->w_topline - 1, ev_botline,
-                         wp->w_cursor.lnum - 1, wp->w_cursor.col, line_count, delta);
+                         cursor->lnum - 1, cursor->col, line_count, delta);
     wp->w_viewport_invalid = false;
     wp->w_viewport_last_topline = wp->w_topline;
     wp->w_viewport_last_botline = wp->w_botline;
@@ -1657,9 +1658,14 @@ void win_init(win_T *newp, win_T *oldp, int flags)
   newp->w_buffer = oldp->w_buffer;
   newp->w_s = &(oldp->w_buffer->b_s);
   oldp->w_buffer->b_nwindows++;
-  newp->w_cursor = oldp->w_cursor;
   newp->w_valid = 0;
-  newp->w_curswant = oldp->w_curswant;
+  selection_T *primsel = &WIN_PRIMSEL(newp);
+  primsel->anchor = (pos_T){.lnum = 1, .col = 0, .coladd = 0};
+  primsel->valid_cursor = (pos_T){.lnum = 1, .col = 0, .coladd = 0};
+  primsel->curswant = WIN_PRIMSEL(oldp).curswant;
+  primsel->virtcol = 0;
+  newp->w_primsel = 0;
+  WIN_PRIMCURS(newp) = WIN_PRIMCURS(oldp);
   newp->w_set_curswant = oldp->w_set_curswant;
   newp->w_topline = oldp->w_topline;
   newp->w_topfill = oldp->w_topfill;
@@ -1938,7 +1944,7 @@ static void win_exchange(int Prenum)
   if (wp->w_buffer != curbuf) {
     reset_VIsual_and_resel();
   } else if (VIsual_active) {
-    wp->w_cursor = curwin->w_cursor;
+    WIN_PRIMCURS(wp) = WIN_PRIMCURS(curwin);
   }
 
   win_enter(wp, true);
@@ -2535,11 +2541,14 @@ void entering_window(win_T *const win)
 
 void win_init_empty(win_T *wp)
 {
+  selection_T *primsel = &WIN_PRIMSEL(wp);
+  pos_T *cursor = &primsel->cursor;
+
   redraw_later(wp, UPD_NOT_VALID);
   wp->w_lines_valid = 0;
-  wp->w_cursor.lnum = 1;
-  wp->w_curswant = wp->w_cursor.col = 0;
-  wp->w_cursor.coladd = 0;
+  cursor->lnum = 1;
+  primsel->curswant = cursor->col = 0;
+  cursor->coladd = 0;
   wp->w_pcmark.lnum = 1;        // pcmark not cleared but set to line 1
   wp->w_pcmark.col = 0;
   wp->w_prev_pcmark.lnum = 0;
@@ -4948,6 +4957,8 @@ void tabpage_move(int nr)
 /// position to keep the same Visual area.
 void win_goto(win_T *wp)
 {
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   win_T *owp = curwin;
 
   if (text_or_buf_locked()) {
@@ -4959,7 +4970,7 @@ void win_goto(win_T *wp)
     // careful: triggers ModeChanged autocommand
     reset_VIsual_and_resel();
   } else if (VIsual_active) {
-    wp->w_cursor = curwin->w_cursor;
+    WIN_PRIMCURS(wp) = *cursor;
   }
 
   // autocommand may have made wp invalid
@@ -4971,10 +4982,10 @@ void win_goto(win_T *wp)
 
   // Conceal cursor line in previous window, unconceal in current window.
   if (win_valid(owp) && owp->w_p_cole > 0 && !msg_scrolled) {
-    redrawWinline(owp, owp->w_cursor.lnum);
+    redrawWinline(owp, WIN_PRIMCURS(owp).lnum);
   }
   if (curwin->w_p_cole > 0 && !msg_scrolled) {
-    redrawWinline(curwin, curwin->w_cursor.lnum);
+    redrawWinline(curwin, cursor->lnum);
   }
 }
 
@@ -5211,7 +5222,7 @@ static void win_enter_ext(win_T *const wp, const int flags)
 
   check_cursor(curwin);
   if (!virtual_active(curwin)) {
-    curwin->w_cursor.coladd = 0;
+    WIN_PRIMCURS(curwin).coladd = 0;
   }
   if (*p_spk == 'c') {
     changed_line_abv_curs();      // assume cursor position needs updating
@@ -5421,7 +5432,14 @@ win_T *win_alloc(win_T *after, bool hidden)
   new_wp->w_topline = 1;
   new_wp->w_topfill = 0;
   new_wp->w_botline = 2;
-  new_wp->w_cursor.lnum = 1;
+  kv_init(new_wp->w_selections);
+  pos_T anchor = {.lnum = 1, .col = 0, .coladd = 0};
+  pos_T valid_cursor = {.lnum = 1, .col = 0, .coladd = 0};
+  selection_T selection = {
+    .anchor = anchor,
+    .valid_cursor = valid_cursor,
+  };
+  kv_push(new_wp->w_selections, selection);
   new_wp->w_scbind_pos = 1;
   new_wp->w_floating = 0;
   new_wp->w_config = WIN_CONFIG_INIT;
@@ -5471,6 +5489,8 @@ void win_free(win_T *wp, tabpage_T *tp)
   // Don't execute autocommands while the window is halfway being deleted.
   block_autocmds();
 
+  kv_destroy(wp->w_selections);
+
   set_destroy(uint32_t, &wp->w_ns_set);
 
   clear_winopt(&wp->w_onebuf_opt);
@@ -5491,6 +5511,8 @@ void win_free(win_T *wp, tabpage_T *tp)
       ttp->tp_prevwin = NULL;
     }
   }
+
+  kv_destroy(wp->w_selections);
 
   xfree(wp->w_lines);
 
@@ -6714,8 +6736,8 @@ void win_fix_scroll(bool resize)
           && wp->w_botline - 1 <= wp->w_buffer->b_ml.ml_line_count) {
         int diff = (wp->w_winrow - wp->w_prev_winrow)
                    + (wp->w_height - wp->w_prev_height);
-        pos_T cursor = wp->w_cursor;
-        wp->w_cursor.lnum = wp->w_botline - 1;
+        pos_T cursor = WIN_PRIMCURS(wp);
+        WIN_PRIMCURS(wp).lnum = wp->w_botline - 1;
 
         // Add difference in height and row to botline.
         if (diff > 0) {
@@ -6728,7 +6750,7 @@ void win_fix_scroll(bool resize)
         // screen.
         wp->w_fraction = FRACTION_MULT;
         scroll_to_fraction(wp, wp->w_prev_height);
-        wp->w_cursor = cursor;
+        WIN_PRIMCURS(wp) = cursor;
         wp->w_valid &= ~VALID_WCOL;
       } else if (wp == curwin) {
         wp->w_valid &= ~VALID_CROW;
@@ -6756,6 +6778,7 @@ void win_fix_scroll(bool resize)
 static void win_fix_cursor(bool normal)
 {
   win_T *wp = curwin;
+  pos_T *cursor = &WIN_PRIMCURS(wp);
 
   if (skip_win_fix_cursor
       || !wp->w_do_win_fix_cursor
@@ -6766,17 +6789,17 @@ static void win_fix_cursor(bool normal)
   wp->w_do_win_fix_cursor = false;
   // Determine valid cursor range.
   int so = MIN(wp->w_view_height / 2, get_scrolloff_value(wp));
-  linenr_T lnum = wp->w_cursor.lnum;
+  linenr_T lnum = cursor->lnum;
 
-  wp->w_cursor.lnum = wp->w_topline;
+  cursor->lnum = wp->w_topline;
   cursor_down_inner(wp, so, false);
-  linenr_T top = wp->w_cursor.lnum;
+  linenr_T top = cursor->lnum;
 
-  wp->w_cursor.lnum = wp->w_botline - 1;
+  cursor->lnum = wp->w_botline - 1;
   cursor_up_inner(wp, so, false);
-  linenr_T bot = wp->w_cursor.lnum;
+  linenr_T bot = cursor->lnum;
 
-  wp->w_cursor.lnum = lnum;
+  cursor->lnum = lnum;
   // Check if cursor position is above or below valid cursor range.
   linenr_T nlnum = 0;
   if (lnum > bot && (wp->w_botline - wp->w_buffer->b_ml.ml_line_count) != 1) {
@@ -6788,7 +6811,7 @@ static void win_fix_cursor(bool normal)
   if (nlnum != 0) {  // Cursor is invalid for current scroll position.
     if (normal) {    // Save to jumplist and set cursor to avoid scrolling.
       setmark('\'');
-      wp->w_cursor.lnum = nlnum;
+      cursor->lnum = nlnum;
     } else {         // Scroll instead when not in normal mode.
       wp->w_fraction = (nlnum == bot) ? FRACTION_MULT : 0;
       scroll_to_fraction(wp, wp->w_prev_height);
@@ -6830,11 +6853,12 @@ void scroll_to_fraction(win_T *wp, int prev_height)
           || wp->w_topline > 1)) {
     // Find a value for w_topline that shows the cursor at the same
     // relative position in the window as before (more or less).
-    linenr_T lnum = wp->w_cursor.lnum;
+    pos_T *cursor = &WIN_PRIMCURS(wp);
+    linenr_T lnum = cursor->lnum;
     // can happen when starting up
     lnum = MAX(lnum, 1);
     wp->w_wrow = (wp->w_fraction * height - 1) / FRACTION_MULT;
-    int line_size = plines_win_col(wp, lnum, wp->w_cursor.col) - 1;
+    int line_size = plines_win_col(wp, lnum, cursor->col) - 1;
     int sline = wp->w_wrow - line_size;
 
     if (sline >= 0) {
@@ -7350,19 +7374,21 @@ static void check_lnums_both(bool do_curwin, bool nested)
 {
   FOR_ALL_TAB_WINDOWS(tp, wp) {
     if ((do_curwin || wp != curwin) && wp->w_buffer == curbuf) {
+      pos_T *cursor = &WIN_PRIMCURS(wp);
+
       if (!nested) {
         // save the original cursor position and topline
-        wp->w_save_cursor.w_cursor_save = wp->w_cursor;
+        wp->w_save_cursor.w_primsel_save = *cursor;
         wp->w_save_cursor.w_topline_save = wp->w_topline;
       }
 
-      bool need_adjust = wp->w_cursor.lnum > curbuf->b_ml.ml_line_count;
+      bool need_adjust = cursor->lnum > curbuf->b_ml.ml_line_count;
       if (need_adjust) {
-        wp->w_cursor.lnum = curbuf->b_ml.ml_line_count;
+        cursor->lnum = curbuf->b_ml.ml_line_count;
       }
       if (need_adjust || !nested) {
         // save the (corrected) cursor position
-        wp->w_save_cursor.w_cursor_corr = wp->w_cursor;
+        wp->w_save_cursor.w_primsel_corr = *cursor;
       }
 
       need_adjust = wp->w_topline > curbuf->b_ml.ml_line_count;
@@ -7401,9 +7427,10 @@ void reset_lnums(void)
       // Restore the value if the autocommand didn't change it and it was set.
       // Note: This triggers e.g. on BufReadPre, when the buffer is not yet
       //       loaded, so cannot validate the buffer line
-      if (equalpos(wp->w_save_cursor.w_cursor_corr, wp->w_cursor)
-          && wp->w_save_cursor.w_cursor_save.lnum != 0) {
-        wp->w_cursor = wp->w_save_cursor.w_cursor_save;
+      pos_T *cursor = &WIN_PRIMCURS(wp);
+      if (equalpos(wp->w_save_cursor.w_primsel_corr, *cursor)
+          && wp->w_save_cursor.w_primsel_save.lnum != 0) {
+        *cursor = wp->w_save_cursor.w_primsel_save;
       }
       if (wp->w_save_cursor.w_topline_corr == wp->w_topline
           && wp->w_save_cursor.w_topline_save != 0) {

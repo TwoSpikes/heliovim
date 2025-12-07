@@ -3035,19 +3035,21 @@ static int qf_jump_edit_buffer(qf_info_T *qi, qfline_T *qf_ptr, int forceit, int
 /// a search pattern.
 static void qf_jump_goto_line(linenr_T qf_lnum, int qf_col, char qf_viscol, char *qf_pattern)
 {
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+
   if (qf_pattern == NULL) {
     // Go to line with error, unless qf_lnum is 0.
     linenr_T i = qf_lnum;
     if (i > 0) {
       i = MIN(i, curbuf->b_ml.ml_line_count);
-      curwin->w_cursor.lnum = i;
+      cursor->lnum = i;
     }
     if (qf_col > 0) {
-      curwin->w_cursor.coladd = 0;
+      cursor->coladd = 0;
       if (qf_viscol == true) {
         coladvance(curwin, qf_col - 1);
       } else {
-        curwin->w_cursor.col = qf_col - 1;
+        cursor->col = qf_col - 1;
       }
       curwin->w_set_curswant = true;
       check_cursor(curwin);
@@ -3056,10 +3058,10 @@ static void qf_jump_goto_line(linenr_T qf_lnum, int qf_col, char qf_viscol, char
     }
   } else {
     // Move the cursor to the first line in the buffer
-    pos_T save_cursor = curwin->w_cursor;
-    curwin->w_cursor.lnum = 0;
+    pos_T save_cursor = *cursor;
+    cursor->lnum = 0;
     if (!do_search(NULL, '/', '/', qf_pattern, strlen(qf_pattern), 1, SEARCH_KEEP, NULL)) {
-      curwin->w_cursor = save_cursor;
+      *cursor = save_cursor;
     }
   }
 }
@@ -3069,6 +3071,7 @@ static void qf_jump_print_msg(qf_info_T *qi, int qf_index, qfline_T *qf_ptr, buf
                               linenr_T old_lnum)
 {
   garray_T *const gap = qfga_get();
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   // Update the screen before showing the message, unless messages scrolled.
   if (!msg_scrolled) {
@@ -3091,7 +3094,7 @@ static void qf_jump_print_msg(qf_info_T *qi, int qf_index, qfline_T *qf_ptr, buf
   // flag is present in 'shortmess'; But when not jumping, print the
   // whole message.
   linenr_T i = msg_scroll;
-  if (curbuf == old_curbuf && curwin->w_cursor.lnum == old_lnum) {
+  if (curbuf == old_curbuf && cursor->lnum == old_lnum) {
     msg_scroll = true;
   } else if ((msg_scrolled == 0 || (p_ch == 0 && msg_scrolled == 1))
              && shortmess(SHM_OVERALL)) {
@@ -3175,7 +3178,8 @@ static int qf_jump_to_buffer(qf_info_T *qi, int qf_index, qfline_T *qf_ptr, int 
   // If there is a file name, read the wanted file if needed, and check
   // autowrite etc.
   buf_T *old_curbuf = curbuf;
-  linenr_T old_lnum = curwin->w_cursor.lnum;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  linenr_T old_lnum = cursor->lnum;
   int retval = OK;
 
   if (qf_ptr->qf_fnum != 0) {
@@ -3757,6 +3761,7 @@ void qf_view_result(bool split)
 {
   qf_info_T *qi = ql_info;
   assert(qi != NULL);
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   if (IS_LL_WINDOW(curwin)) {
     qi = GET_LOC_LIST(curwin);
@@ -3769,7 +3774,7 @@ void qf_view_result(bool split)
 
   if (split) {
     // Open the selected entry in a new window
-    qf_jump_newwin(qi, 0, (int)curwin->w_cursor.lnum, false, true);
+    qf_jump_newwin(qi, 0, (int)cursor->lnum, false, true);
     do_cmdline_cmd("clearjumps");
     return;
   }
@@ -3952,6 +3957,7 @@ static void qf_set_title_var(qf_list_T *qfl)
 void ex_copen(exarg_T *eap)
 {
   qf_info_T *qi;
+  pos_T *cursor = &WIN_PRIMCURS(curwin);
 
   if ((qi = qf_cmd_get_stack(eap, true)) == NULL) {
     return;
@@ -3991,8 +3997,8 @@ void ex_copen(exarg_T *eap)
 
   decr_quickfix_busy();
 
-  curwin->w_cursor.lnum = lnum;
-  curwin->w_cursor.col = 0;
+  cursor->lnum = lnum;
+  cursor->col = 0;
   check_cursor(curwin);
   update_topline(curwin);             // scroll to show the line
 }
@@ -4001,13 +4007,15 @@ void ex_copen(exarg_T *eap)
 static void qf_win_goto(win_T *win, linenr_T lnum)
 {
   win_T *old_curwin = curwin;
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
 
   curwin = win;
   curbuf = win->w_buffer;
-  curwin->w_cursor.lnum = lnum;
-  curwin->w_cursor.col = 0;
-  curwin->w_cursor.coladd = 0;
-  curwin->w_curswant = 0;
+  cursor->lnum = lnum;
+  cursor->col = 0;
+  cursor->coladd = 0;
+  primsel->curswant = 0;
   update_topline(curwin);              // scroll to show the line
   redraw_later(curwin, UPD_VALID);
   curwin->w_redr_status = true;  // update ruler
@@ -4026,7 +4034,7 @@ void ex_cbottom(exarg_T *eap)
 
   win_T *win = qf_find_win(qi);
 
-  if (win != NULL && win->w_cursor.lnum != win->w_buffer->b_ml.ml_line_count) {
+  if (win != NULL && WIN_PRIMCURS(win).lnum != win->w_buffer->b_ml.ml_line_count) {
     qf_win_goto(win, win->w_buffer->b_ml.ml_line_count);
   }
 }
@@ -5275,7 +5283,7 @@ void ex_cbelow(exarg_T *eap)
              || eap->cmdidx == CMD_cafter
              || eap->cmdidx == CMD_lafter) ? FORWARD : BACKWARD;
 
-  pos_T pos = curwin->w_cursor;
+  pos_T pos = WIN_PRIMCURS(curwin);
   // A quickfix entry column number is 1 based whereas cursor column
   // number is 0 based. Adjust the column number.
   pos.col++;

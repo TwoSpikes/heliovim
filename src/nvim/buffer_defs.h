@@ -1042,8 +1042,8 @@ typedef struct {
 typedef struct {
   int w_topline_save;   // original topline value
   int w_topline_corr;   // corrected topline value
-  pos_T w_cursor_save;  // original cursor position
-  pos_T w_cursor_corr;  // corrected cursor position
+  pos_T w_primsel_save;  // original primary selection position
+  pos_T w_primsel_corr;  // corrected primary selection position
 } pos_save_T;
 
 /// Characters from the 'listchars' option.
@@ -1118,11 +1118,12 @@ struct window_S {
 
   frame_T *w_frame;             ///< frame containing this window
 
-  pos_T w_cursor;                   ///< cursor position in buffer
+  kvec_t(selection_T) w_selections;
+  size_t w_primsel;                   // Primary selection
 
-  colnr_T w_curswant;               ///< Column we want to be at.  This is
-                                    ///< used to try to stay in the same column
-                                    ///< for up/down cursor motions.
+#define WIN_PRIMSEL(w) (w->w_selections.items[w->w_primsel])
+#define WIN_PRIMCURS(w) (WIN_PRIMSEL(w).cursor)
+#define WIN_PRIMANCHOR(w) (WIN_PRIMSEL(w).anchor)
 
   int w_set_curswant;               // If set, then update w_curswant the next
                                     // time through cursupdate() to the
@@ -1218,7 +1219,6 @@ struct window_S {
   // w_valid is a bitfield of flags, which indicate if specific values are
   // valid or need to be recomputed.
   int w_valid;
-  pos_T w_valid_cursor;             // last known position of w_cursor, used to adjust w_valid
   colnr_T w_valid_leftcol;          // last known w_leftcol
   colnr_T w_valid_skipcol;          // last known w_skipcol
 
@@ -1234,13 +1234,6 @@ struct window_S {
   bool w_cline_folded;              // cursor line is folded
 
   int w_cline_row;                  // starting row of the cursor line
-
-  colnr_T w_virtcol;                // column number of the cursor in the
-                                    // buffer line, as opposed to the column
-                                    // number we're at on the screen.  This
-                                    // makes a difference on lines which span
-                                    // more than one screen line or when
-                                    // w_leftcol is non-zero
 
   // w_wrow and w_wcol specify the cursor position in the window.
   // This is related to positions in the window, not in the display or

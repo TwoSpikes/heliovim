@@ -61,11 +61,12 @@ static int did_lcd;
 static int put_view_curpos(FILE *fd, const win_T *wp, char *spaces)
 {
   int r;
+  selection_T *primsel = &WIN_PRIMSEL(wp);
 
-  if (wp->w_curswant == MAXCOL) {
+  if (primsel->curswant == MAXCOL) {
     r = fprintf(fd, "%snormal! $\n", spaces);
   } else {
-    r = fprintf(fd, "%snormal! 0%d|\n", spaces, wp->w_virtcol + 1);
+    r = fprintf(fd, "%snormal! 0%d|\n", spaces, primsel->virtcol + 1);
   }
   return r >= 0;
 }
@@ -467,17 +468,20 @@ static int put_view(FILE *fd, win_T *wp, tabpage_T *tp, bool add_edit, unsigned 
 
   // Set the cursor after creating folds, since that moves the cursor.
   if (do_cursor) {
+    selection_T *primsel = &WIN_PRIMSEL(wp);
+    pos_T *cursor = &primsel->cursor;
+
     // Restore the cursor line in the file and relatively in the
     // window.  Don't use "G", it changes the jumplist.
     if (wp->w_view_height <= 0) {
-      if (fprintf(fd, "let s:l = %" PRIdLINENR "\n", wp->w_cursor.lnum) < 0) {
+      if (fprintf(fd, "let s:l = %" PRIdLINENR "\n", cursor->lnum) < 0) {
         return FAIL;
       }
     } else if (fprintf(fd,
                        "let s:l = %" PRIdLINENR " - ((%" PRIdLINENR
                        " * winheight(0) + %d) / %d)\n",
-                       wp->w_cursor.lnum,
-                       wp->w_cursor.lnum - wp->w_topline,
+                       cursor->lnum,
+                       cursor->lnum - wp->w_topline,
                        (wp->w_view_height / 2),
                        wp->w_view_height) < 0) {
       return FAIL;
@@ -487,11 +491,11 @@ static int put_view(FILE *fd, win_T *wp, tabpage_T *tp, bool add_edit, unsigned 
                 "keepjumps exe s:l\n"
                 "normal! zt\n"
                 "keepjumps %" PRIdLINENR "\n",
-                wp->w_cursor.lnum) < 0) {
+                cursor->lnum) < 0) {
       return FAIL;
     }
     // Restore the cursor column and left offset when not wrapping.
-    if (wp->w_cursor.col == 0) {
+    if (cursor->col == 0) {
       PUTLINE_FAIL("normal! 0");
     } else {
       if (!wp->w_p_wrap && wp->w_leftcol > 0 && wp->w_width > 0) {
@@ -501,11 +505,11 @@ static int put_view(FILE *fd, win_T *wp, tabpage_T *tp, bool add_edit, unsigned 
                     "if s:c > 0\n"
                     "  exe 'normal! ' . s:c . '|zs' . %" PRId64 " . '|'\n"
                     "else\n",
-                    (int64_t)wp->w_virtcol + 1,
-                    (int64_t)(wp->w_virtcol - wp->w_leftcol),
+                    (int64_t)primsel->virtcol + 1,
+                    (int64_t)(primsel->virtcol - wp->w_leftcol),
                     (int64_t)(wp->w_width / 2),
                     (int64_t)wp->w_width,
-                    (int64_t)wp->w_virtcol + 1) < 0
+                    (int64_t)primsel->virtcol + 1) < 0
             || put_view_curpos(fd, wp, "  ") == FAIL
             || put_line(fd, "endif") == FAIL) {
           return FAIL;
