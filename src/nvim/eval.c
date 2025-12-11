@@ -5270,9 +5270,10 @@ pos_T *var2fpos(const typval_T *const tv, const bool dollar_lnum, int *const ret
   FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_NONNULL_ALL
 {
   static pos_T pos;
-  pos_T *cursor = &WIN_PRIMCURS(wp);
-
   buf_T *bp = wp->w_buffer;
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
 
   // Argument can be [lnum, col, coladd].
   if (tv->v_type == VAR_LIST) {
@@ -5338,7 +5339,7 @@ pos_T *var2fpos(const typval_T *const tv, const bool dollar_lnum, int *const ret
   } else if (name[0] == 'v' && name[1] == NUL) {
     // Visual start
     if (VIsual_active && wp == curwin) {
-      pos = VIsual;
+      pos = *anchor;
     } else {
       pos = *cursor;
     }

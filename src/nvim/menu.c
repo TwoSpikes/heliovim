@@ -1487,6 +1487,7 @@ void execute_menu(const exarg_T *eap, vimmenu_T *menu, int mode_idx)
       pos_T tpos;
       selection_T *primsel = &WIN_PRIMSEL(curwin);
       pos_T *cursor = &primsel->cursor;
+      pos_T *anchor = &primsel->anchor;
 
       idx = MENU_INDEX_VISUAL;
 
@@ -1515,7 +1516,7 @@ void execute_menu(const exarg_T *eap, vimmenu_T *menu, int mode_idx)
       VIsual_active = true;
       VIsual_reselect = true;
       check_cursor(curwin);
-      VIsual = *cursor;
+      *anchor = *cursor;
       *cursor = tpos;
 
       check_cursor(curwin);

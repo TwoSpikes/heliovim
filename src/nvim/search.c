@@ -2415,18 +2415,20 @@ void showmatch(int c)
 int current_search(int count, bool forward)
 {
   bool old_p_ws = p_ws;
-  pos_T save_VIsual = VIsual;
-  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
+  pos_T save_VIsual = *anchor;
 
   // Correct cursor when 'selection' is exclusive
-  if (VIsual_active && *p_sel == 'e' && lt(VIsual, *cursor)) {
+  if (VIsual_active && *p_sel == 'e' && lt(*anchor, *cursor)) {
     dec_cursor();
   }
 
   // When searching forward and the cursor is at the start of the Visual
   // area, skip the first search backward, otherwise it doesn't move.
   const bool skip_first_backward = forward && VIsual_active
-                                   && lt(*cursor, VIsual);
+                                   && lt(*cursor, *anchor);
 
   pos_T pos = *cursor;       // position after the pattern
   pos_T orig_pos = *cursor;  // position of the cursor at beginning
@@ -2489,7 +2491,7 @@ int current_search(int count, bool forward)
     if (i == 1 && !result) {  // not found, abort
       *cursor = orig_pos;
       if (VIsual_active) {
-        VIsual = save_VIsual;
+        *anchor = save_VIsual;
       }
       return FAIL;
     } else if (i == 0 && !result) {
@@ -2506,12 +2508,12 @@ int current_search(int count, bool forward)
   pos_T start_pos = pos;
 
   if (!VIsual_active) {
-    VIsual = start_pos;
+    *anchor = start_pos;
   }
 
   // put the cursor after the match
   *cursor = end_pos;
-  if (lt(VIsual, end_pos) && forward) {
+  if (lt(*anchor, end_pos) && forward) {
     if (skip_first_backward) {
       // put the cursor on the start of the match
       *cursor = pos;
@@ -2519,7 +2521,7 @@ int current_search(int count, bool forward)
       // put the cursor on last character of match
       dec_cursor();
     }
-  } else if (VIsual_active && lt(*cursor, VIsual) && forward) {
+  } else if (VIsual_active && lt(*cursor, *anchor) && forward) {
     *cursor = pos;   // put the cursor on the start of the match
   }
   VIsual_active = true;
@@ -2527,10 +2529,10 @@ int current_search(int count, bool forward)
 
   if (*p_sel == 'e') {
     // Correction for exclusive selection depends on the direction.
-    if (forward && ltoreq(VIsual, *cursor)) {
+    if (forward && ltoreq(*anchor, *cursor)) {
       inc_cursor();
-    } else if (!forward && ltoreq(*cursor, VIsual)) {
-      inc(&VIsual);
+    } else if (!forward && ltoreq(*cursor, *anchor)) {
+      inc(anchor);
     }
   }
 

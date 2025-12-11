@@ -1476,7 +1476,7 @@ win_found:
   VIsual_active = aco->save_VIsual_active;
   check_cursor(curwin);  // just in case lines got deleted
   if (VIsual_active) {
-    check_pos(curbuf, &VIsual);
+    check_pos(curbuf, &WIN_PRIMANCHOR(curwin));
   }
 }
 

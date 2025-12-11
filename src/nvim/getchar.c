@@ -831,8 +831,12 @@ int start_redo(int count, bool old_redo)
     c = read_redo(false, old_redo);
   }
 
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
+
   if (c == 'v') {   // redo Visual
-    VIsual = WIN_PRIMCURS(curwin);
+    *anchor = *cursor;
     VIsual_active = true;
     VIsual_select = false;
     VIsual_reselect = true;

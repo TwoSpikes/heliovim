@@ -1065,6 +1065,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
 
   selection_T *primsel = &WIN_PRIMSEL(curwin);
   pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
   selection_T *wp_primsel = &WIN_PRIMSEL(wp);
   pos_T *wp_cursor = &wp_primsel->cursor;
 
@@ -1201,13 +1202,13 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
     if (VIsual_active && wp->w_buffer == curwin->w_buffer) {
       pos_T *top, *bot;
 
-      if (ltoreq(*cursor, VIsual)) {
+      if (ltoreq(*cursor, *anchor)) {
         // Visual is after curwin->w_cursor
         top = cursor;
-        bot = &VIsual;
+        bot = anchor;
       } else {
         // Visual is before curwin->w_cursor
-        top = &VIsual;
+        top = anchor;
         bot = cursor;
       }
       lnum_in_visual_area = (lnum >= top->lnum && lnum <= bot->lnum);
@@ -2748,7 +2749,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, b
       if (lcs_eol_todo
           && ((area_attr != 0 && wlv.vcol == wlv.fromcol
                && (VIsual_mode != Ctrl_V
-                   || lnum == VIsual.lnum
+                   || lnum == primsel->anchor.lnum
                    || lnum == primsel->cursor.lnum))
               // highlight 'hlsearch' match at end of line
               || prevcol_hl_flag)) {

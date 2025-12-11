@@ -802,6 +802,7 @@ void show_cursor_info_later(bool force)
   int state = get_real_state();
   selection_T *primsel = &WIN_PRIMSEL(curwin);
   pos_T cursor = primsel->cursor;
+  pos_T anchor = primsel->anchor;
   int empty_line = (State & MODE_INSERT) == 0
                    && *ml_get_buf(curwin->w_buffer, cursor.lnum) == NUL;
 
@@ -819,9 +820,9 @@ void show_cursor_info_later(bool force)
       || reg_recording != curwin->w_stl_recording
       || state != curwin->w_stl_state
       || (VIsual_active && (VIsual_mode != curwin->w_stl_visual_mode
-                            || VIsual.lnum != curwin->w_stl_visual_pos.lnum
-                            || VIsual.col != curwin->w_stl_visual_pos.col
-                            || VIsual.coladd != curwin->w_stl_visual_pos.coladd))) {
+                            || anchor.lnum != curwin->w_stl_visual_pos.lnum
+                            || anchor.col != curwin->w_stl_visual_pos.col
+                            || anchor.coladd != curwin->w_stl_visual_pos.coladd))) {
     if (curwin->w_status_height || global_stl_height()) {
       curwin->w_redr_status = true;
     } else {
@@ -845,7 +846,7 @@ void show_cursor_info_later(bool force)
   curwin->w_stl_state = state;
   if (VIsual_active) {
     curwin->w_stl_visual_mode = VIsual_mode;
-    curwin->w_stl_visual_pos = VIsual;
+    curwin->w_stl_visual_pos = anchor;
   }
 }
 
@@ -1789,6 +1790,7 @@ static void win_update(win_T *wp)
 
   selection_T *primsel = &WIN_PRIMSEL(curwin);
   pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
   pos_T *wp_cursor = &WIN_PRIMCURS(wp);
 
   // check if we are updating or removing the inverted part
@@ -1801,11 +1803,11 @@ static void win_update(win_T *wp)
         // If the type of Visual selection changed, redraw the whole
         // selection.  Also when the ownership of the X selection is
         // gained or lost.
-        if (cursor->lnum < VIsual.lnum) {
+        if (cursor->lnum < anchor->lnum) {
           from = cursor->lnum;
-          to = VIsual.lnum;
+          to = anchor->lnum;
         } else {
-          from = VIsual.lnum;
+          from = anchor->lnum;
           to = cursor->lnum;
         }
         // redraw more when the cursor moved as well
@@ -1826,14 +1828,14 @@ static void win_update(win_T *wp)
           }
         }
 
-        if (VIsual.lnum != wp->w_old_visual_lnum
-            || VIsual.col != wp->w_old_visual_col) {
+        if (anchor->lnum != wp->w_old_visual_lnum
+            || anchor->col != wp->w_old_visual_col) {
           if (wp->w_old_visual_lnum < from
               && wp->w_old_visual_lnum != 0) {
             from = wp->w_old_visual_lnum;
           }
-          to = MAX(MAX(to, wp->w_old_visual_lnum), VIsual.lnum);
-          from = MIN(from, VIsual.lnum);
+          to = MAX(MAX(to, wp->w_old_visual_lnum), anchor->lnum);
+          from = MIN(from, anchor->lnum);
         }
       }
 
@@ -1848,7 +1850,7 @@ static void win_update(win_T *wp)
           curwin->w_ve_flags = kOptVeFlagAll;
         }
 
-        getvcols(wp, &VIsual, cursor, &fromc, &toc);
+        getvcols(wp, anchor, cursor, &fromc, &toc);
         toc++;
         curwin->w_ve_flags = save_ve_flags;
         // Highlight to the end of the line, unless 'virtualedit' has
@@ -1856,13 +1858,13 @@ static void win_update(win_T *wp)
         if (primsel->curswant == MAXCOL) {
           if (get_ve_flags(curwin) & kOptVeFlagBlock) {
             pos_T pos;
-            int cursor_above = cursor->lnum < VIsual.lnum;
+            int cursor_above = cursor->lnum < anchor->lnum;
 
             // Need to find the longest line.
             toc = 0;
             pos.coladd = 0;
             for (pos.lnum = cursor->lnum;
-                 cursor_above ? pos.lnum <= VIsual.lnum : pos.lnum >= VIsual.lnum;
+                 cursor_above ? pos.lnum <= anchor->lnum : pos.lnum >= anchor->lnum;
                  pos.lnum += cursor_above ? 1 : -1) {
               colnr_T t;
 
@@ -1878,8 +1880,8 @@ static void win_update(win_T *wp)
 
         if (fromc != wp->w_old_cursor_fcol
             || toc != wp->w_old_cursor_lcol) {
-          from = MIN(from, VIsual.lnum);
-          to = MAX(to, VIsual.lnum);
+          from = MIN(from, anchor->lnum);
+          to = MAX(to, anchor->lnum);
         }
         wp->w_old_cursor_fcol = fromc;
         wp->w_old_cursor_lcol = toc;
@@ -1951,8 +1953,8 @@ static void win_update(win_T *wp)
   if (VIsual_active && buf == curwin->w_buffer) {
     wp->w_old_visual_mode = (char)VIsual_mode;
     wp->w_old_cursor_lnum = cursor->lnum;
-    wp->w_old_visual_lnum = VIsual.lnum;
-    wp->w_old_visual_col = VIsual.col;
+    wp->w_old_visual_lnum = anchor->lnum;
+    wp->w_old_visual_col = anchor->col;
     wp->w_old_curswant = primsel->curswant;
   } else {
     wp->w_old_visual_mode = 0;

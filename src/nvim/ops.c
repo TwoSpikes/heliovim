@@ -2848,6 +2848,7 @@ void cursor_pos_info(dict_T *dict)
   const int l_VIsual_mode = VIsual_mode;
   selection_T *primsel = &WIN_PRIMSEL(curwin);
   pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
 
   // Compute the length of the file in characters.
   if (curbuf->b_ml.ml_flags & ML_EMPTY) {
@@ -2866,12 +2867,12 @@ void cursor_pos_info(dict_T *dict)
     }
 
     if (l_VIsual_active) {
-      if (lt(VIsual, *cursor)) {
-        min_pos = VIsual;
+      if (lt(*anchor, *cursor)) {
+        min_pos = *anchor;
         max_pos = *cursor;
       } else {
         min_pos = *cursor;
-        max_pos = VIsual;
+        max_pos = *anchor;
       }
       if (*p_sel == 'e' && max_pos.col > 0) {
         max_pos.col--;
@@ -3298,6 +3299,7 @@ void do_pending_operator(cmdarg_T *cap, int old_col, bool gui_yank)
   int lbr_saved = curwin->w_p_lbr;
   selection_T *primsel = &WIN_PRIMSEL(curwin);
   pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
 
   // The visual area is remembered for redo
   static redo_VIsual_T redo_VIsual = { NUL, 0, 0, 0, 0 };
@@ -3334,7 +3336,7 @@ void do_pending_operator(cmdarg_T *cap, int old_col, bool gui_yank)
       // Change line- or charwise motion into Visual block mode.
       if (!VIsual_active) {
         VIsual_active = true;
-        VIsual = oap->start;
+        *anchor = oap->start;
       }
       VIsual_mode = Ctrl_V;
       VIsual_select = false;
@@ -3412,7 +3414,7 @@ void do_pending_operator(cmdarg_T *cap, int old_col, bool gui_yank)
     } else if (VIsual_active) {
       if (!gui_yank) {
         // Save the current VIsual area for '< and '> marks, and "gv"
-        curbuf->b_visual.vi_start = VIsual;
+        curbuf->b_visual.vi_start = *anchor;
         curbuf->b_visual.vi_end = *cursor;
         curbuf->b_visual.vi_mode = VIsual_mode;
         restore_visual_mode();
@@ -3425,12 +3427,12 @@ void do_pending_operator(cmdarg_T *cap, int old_col, bool gui_yank)
       // Special case: gH<Del> deletes the last line.
       if (VIsual_select && VIsual_mode == 'V'
           && cap->oap->op_type != OP_DELETE) {
-        if (lt(VIsual, *cursor)) {
-          VIsual.col = 0;
+        if (lt(*anchor, *cursor)) {
+          anchor->col = 0;
           cursor->col = ml_get_len(cursor->lnum);
         } else {
           cursor->col = 0;
-          VIsual.col = ml_get_len(VIsual.lnum);
+          anchor->col = ml_get_len(anchor->lnum);
         }
         VIsual_mode = 'v';
       } else if (VIsual_mode == 'v') {
@@ -3439,7 +3441,7 @@ void do_pending_operator(cmdarg_T *cap, int old_col, bool gui_yank)
         include_line_break = unadjust_for_sel();
       }
 
-      oap->start = VIsual;
+      oap->start = *anchor;
       if (VIsual_mode == 'V') {
         oap->start.col = 0;
         oap->start.coladd = 0;

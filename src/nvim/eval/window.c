@@ -557,7 +557,7 @@ void win_execute_after(win_execute_T *args)
   // check it is valid.
   check_cursor(curwin);
   if (VIsual_active) {
-    check_pos(curbuf, &VIsual);
+    check_pos(curbuf, &WIN_PRIMANCHOR(curwin));
   }
 }
 

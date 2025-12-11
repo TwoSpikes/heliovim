@@ -988,14 +988,16 @@ void foldAdjustVisual(void)
   }
 
   pos_T *start, *end;
-  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
 
-  if (ltoreq(VIsual, *cursor)) {
-    start = &VIsual;
+  if (ltoreq(*anchor, *cursor)) {
+    start = anchor;
     end = cursor;
   } else {
     start = cursor;
-    end = &VIsual;
+    end = anchor;
   }
   if (hasFolding(curwin, start->lnum, &start->lnum, NULL)) {
     start->col = 0;

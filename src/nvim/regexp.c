@@ -1445,23 +1445,24 @@ static bool reg_match_visual(void)
   win_T *wp = rex.reg_win == NULL ? curwin : rex.reg_win;
   selection_T *primsel = &WIN_PRIMSEL(wp);
   pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
   int mode;
   colnr_T start, end;
   colnr_T start2, end2;
   colnr_T curswant;
 
   // Check if the buffer is the current buffer and not using a string.
-  if (rex.reg_buf != curbuf || VIsual.lnum == 0 || !REG_MULTI) {
+  if (rex.reg_buf != curbuf || anchor->lnum == 0 || !REG_MULTI) {
     return false;
   }
 
   if (VIsual_active) {
-    if (lt(VIsual, *cursor)) {
-      top = VIsual;
+    if (lt(*anchor, *cursor)) {
+      top = *anchor;
       bot = *cursor;
     } else {
       top = *cursor;
-      bot = VIsual;
+      bot = *anchor;
     }
     mode = VIsual_mode;
     curswant = primsel->curswant;

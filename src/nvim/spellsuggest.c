@@ -438,7 +438,9 @@ int spell_check_sps(void)
 /// When "count" is non-zero use that suggestion.
 void spell_suggest(int count)
 {
-  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
   pos_T prev_cursor = *cursor;
   char wcopy[MAXWLEN + 2];
   suginfo_T sug;
@@ -462,15 +464,15 @@ void spell_suggest(int count)
   if (VIsual_active) {
     // Use the Visually selected text as the bad word.  But reject
     // a multi-line selection.
-    if (cursor->lnum != VIsual.lnum) {
+    if (cursor->lnum != anchor->lnum) {
       vim_beep(kOptBoFlagSpell);
       return;
     }
-    badlen = (int)cursor->col - (int)VIsual.col;
+    badlen = (int)cursor->col - (int)anchor->col;
     if (badlen < 0) {
       badlen = -badlen;
     } else {
-      cursor->col = VIsual.col;
+      cursor->col = anchor->col;
     }
     badlen++;
     end_visual_mode();

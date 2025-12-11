@@ -1544,10 +1544,11 @@ void end_visual_mode(void)
   mouse_dragging = 0;
   selection_T *primsel = &WIN_PRIMSEL(curwin);
   pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
 
-  // Save the current VIsual area for '< and '> marks, and "gv"
+  // Save the current *anchor area for '< and '> marks, and "gv"
   curbuf->b_visual.vi_mode = VIsual_mode;
-  curbuf->b_visual.vi_start = VIsual;
+  curbuf->b_visual.vi_start = *anchor;
   curbuf->b_visual.vi_end = *cursor;
   curbuf->b_visual.vi_curswant = primsel->curswant;
   curbuf->b_visual_mode_eval = VIsual_mode;
@@ -1887,21 +1888,23 @@ void clear_showcmd(void)
     return;
   }
 
-  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
 
   if (VIsual_active && !char_avail()) {
-    bool cursor_bot = lt(VIsual, *cursor);
+    bool cursor_bot = lt(*anchor, *cursor);
     int lines;
     colnr_T leftcol, rightcol;
     linenr_T top, bot;
 
     // Show the size of the Visual area.
     if (cursor_bot) {
-      top = VIsual.lnum;
+      top = anchor->lnum;
       bot = cursor->lnum;
     } else {
       top = cursor->lnum;
-      bot = VIsual.lnum;
+      bot = anchor->lnum;
     }
     // Include closed folds as a whole.
     hasFolding(curwin, top, &top, NULL);
@@ -1915,12 +1918,12 @@ void clear_showcmd(void)
       // Make 'sbr' empty for a moment to get the correct size.
       p_sbr = empty_string_option;
       curwin->w_p_sbr = empty_string_option;
-      getvcols(curwin, cursor, &VIsual, &leftcol, &rightcol);
+      getvcols(curwin, cursor, anchor, &leftcol, &rightcol);
       p_sbr = saved_sbr;
       curwin->w_p_sbr = saved_w_sbr;
       snprintf(showcmd_buf, SHOWCMD_BUFLEN, "%" PRId64 "x%" PRId64,
                (int64_t)lines, (int64_t)rightcol - leftcol + 1);
-    } else if (VIsual_mode == 'V' || VIsual.lnum != cursor->lnum) {
+    } else if (VIsual_mode == 'V' || anchor->lnum != cursor->lnum) {
       snprintf(showcmd_buf, SHOWCMD_BUFLEN, "%" PRId64, (int64_t)lines);
     } else {
       char *s, *e;
@@ -1928,11 +1931,11 @@ void clear_showcmd(void)
       int chars = 0;
 
       if (cursor_bot) {
-        s = ml_get_pos(&VIsual);
+        s = ml_get_pos(anchor);
         e = get_cursor_pos_ptr();
       } else {
         s = get_cursor_pos_ptr();
-        e = ml_get_pos(&VIsual);
+        e = ml_get_pos(anchor);
       }
       while ((*p_sel != 'e') ? s <= e : s < e) {
         int l = utfc_ptr2len(s);
@@ -3588,12 +3591,14 @@ static void nv_ident(cmdarg_T *cap)
 /// @return      false if more than one line selected.
 bool get_visual_text(cmdarg_T *cap, char **pp, size_t *lenp)
 {
-  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
 
   if (VIsual_mode != 'V') {
     unadjust_for_sel();
   }
-  if (VIsual.lnum != cursor->lnum) {
+  if (anchor->lnum != cursor->lnum) {
     if (cap != NULL) {
       clearopbeep(cap->oap);
     }
@@ -3603,12 +3608,12 @@ bool get_visual_text(cmdarg_T *cap, char **pp, size_t *lenp)
     *pp = get_cursor_line_ptr();
     *lenp = (size_t)get_cursor_line_len();
   } else {
-    if (lt(*cursor, VIsual)) {
+    if (lt(*cursor, *anchor)) {
       *pp = ml_get_pos(cursor);
-      *lenp = (size_t)VIsual.col - (size_t)cursor->col + 1;
+      *lenp = (size_t)anchor->col - (size_t)cursor->col + 1;
     } else {
-      *pp = ml_get_pos(&VIsual);
-      *lenp = (size_t)cursor->col - (size_t)VIsual.col + 1;
+      *pp = ml_get_pos(anchor);
+      *lenp = (size_t)cursor->col - (size_t)anchor->col + 1;
     }
     if (**pp == NUL) {
       *lenp = 0;
@@ -4662,19 +4667,20 @@ static void v_swap_corners(int cmdchar)
   colnr_T left, right;
   selection_T *primsel = &WIN_PRIMSEL(curwin);
   pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
 
   if (cmdchar == 'O' && VIsual_mode == Ctrl_V) {
     pos_T old_cursor = *cursor;
-    getvcols(curwin, &old_cursor, &VIsual, &left, &right);
-    cursor->lnum = VIsual.lnum;
+    getvcols(curwin, &old_cursor, anchor, &left, &right);
+    cursor->lnum = anchor->lnum;
     coladvance(curwin, left);
-    VIsual = *cursor;
+    *anchor = *cursor;
 
     cursor->lnum = old_cursor.lnum;
     primsel->curswant = right;
     // 'selection "exclusive" and cursor at right-bottom corner: move it
     // right one column
-    if (old_cursor.lnum >= VIsual.lnum && *p_sel == 'e') {
+    if (old_cursor.lnum >= anchor->lnum && *p_sel == 'e') {
       primsel->curswant++;
     }
     coladvance(curwin, primsel->curswant);
@@ -4682,12 +4688,12 @@ static void v_swap_corners(int cmdchar)
         && (!virtual_active(curwin)
             || cursor->coladd ==
             old_cursor.coladd)) {
-      cursor->lnum = VIsual.lnum;
-      if (old_cursor.lnum <= VIsual.lnum && *p_sel == 'e') {
+      cursor->lnum = anchor->lnum;
+      if (old_cursor.lnum <= anchor->lnum && *p_sel == 'e') {
         right++;
       }
       coladvance(curwin, right);
-      VIsual = *cursor;
+      *anchor = *cursor;
 
       cursor->lnum = old_cursor.lnum;
       coladvance(curwin, left);
@@ -4695,8 +4701,8 @@ static void v_swap_corners(int cmdchar)
     }
   } else {
     pos_T old_cursor = *cursor;
-    *cursor = VIsual;
-    VIsual = old_cursor;
+    *cursor = *anchor;
+    *anchor = old_cursor;
     curwin->w_set_curswant = true;
   }
 }
@@ -5053,7 +5059,8 @@ static void nv_visual(cmdarg_T *cap)
       // use previously selected part
       selection_T *primsel = &WIN_PRIMSEL(curwin);
       pos_T *cursor = &primsel->cursor;
-      VIsual = *cursor;
+      pos_T *anchor = &primsel->anchor;
+      *anchor = *cursor;
 
       VIsual_active = true;
       VIsual_reselect = true;
@@ -5091,7 +5098,7 @@ static void nv_visual(cmdarg_T *cap)
       } else if (VIsual_mode == Ctrl_V) {
         // Update curswant on the original line, that is where "col" is valid.
         linenr_T lnum = cursor->lnum;
-        cursor->lnum = VIsual.lnum;
+        cursor->lnum = anchor->lnum;
         update_curswant_force();
         assert(cap->count0 >= INT_MIN && cap->count0 <= INT_MAX);
         primsel->curswant += resel_VIsual_vcol * cap->count0 - 1;
@@ -5149,6 +5156,7 @@ static void n_start_visual_mode(int c)
 {
   selection_T *primsel = &WIN_PRIMSEL(curwin);
   pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
 
   VIsual_mode = c;
   VIsual_active = true;
@@ -5160,7 +5168,7 @@ static void n_start_visual_mode(int c)
     validate_virtcol(curwin);
     coladvance(curwin, primsel->virtcol);
   }
-  VIsual = *cursor;
+  *anchor = *cursor;
 
   foldAdjustVisual();
 
@@ -5219,6 +5227,8 @@ static void nv_gv_cmd(cmdarg_T *cap)
   // set w_cursor to the start of the Visual area, tpos to the end
   selection_T *primsel = &WIN_PRIMSEL(curwin);
   pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
+
   if (VIsual_active) {
     int i = VIsual_mode;
     VIsual_mode = curbuf->b_visual.vi_mode;
@@ -5231,7 +5241,7 @@ static void nv_gv_cmd(cmdarg_T *cap)
     tpos = curbuf->b_visual.vi_end;
     curbuf->b_visual.vi_end = *cursor;
     *cursor = curbuf->b_visual.vi_start;
-    curbuf->b_visual.vi_start = VIsual;
+    curbuf->b_visual.vi_start = *anchor;
   } else {
     VIsual_mode = curbuf->b_visual.vi_mode;
     primsel->curswant = curbuf->b_visual.vi_curswant;
@@ -5245,7 +5255,7 @@ static void nv_gv_cmd(cmdarg_T *cap)
   // Set Visual to the start and w_cursor to the end of the Visual
   // area.  Make sure they are on an existing character.
   check_cursor(curwin);
-  VIsual = *cursor;
+  *anchor = *cursor;
   *cursor = tpos;
   check_cursor(curwin);
   update_topline(curwin);
@@ -6091,9 +6101,11 @@ static void nv_beginline(cmdarg_T *cap)
 /// In exclusive Visual mode, may include the last character.
 static void adjust_for_sel(cmdarg_T *cap)
 {
-  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
   if (VIsual_active && cap->oap->inclusive && *p_sel == 'e'
-      && gchar_cursor() != NUL && lt(VIsual, *cursor)) {
+      && gchar_cursor() != NUL && lt(*anchor, *cursor)) {
     inc_cursor();
     cap->oap->inclusive = false;
     VIsual_select_exclu_adj = true;
@@ -6106,10 +6118,12 @@ static void adjust_for_sel(cmdarg_T *cap)
 /// @return  true when backed up to the previous line.
 bool unadjust_for_sel(void)
 {
-  pos_T *cursor = &WIN_PRIMCURS(curwin);
-  if (*p_sel == 'e' && !equalpos(VIsual, *cursor)) {
-    return unadjust_for_sel_inner(lt(VIsual, *cursor)
-                                  ? cursor : &VIsual);
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
+  if (*p_sel == 'e' && !equalpos(*anchor, *cursor)) {
+    return unadjust_for_sel_inner(lt(*anchor, *cursor)
+                                  ? cursor : anchor);
   }
   return false;
 }
