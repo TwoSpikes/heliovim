@@ -587,7 +587,7 @@ void getvcol(win_T *wp, pos_T *pos, colnr_T *start, colnr_T *cursor, colnr_T *en
         && (State & MODE_NORMAL)
         && !wp->w_p_list
         && !virtual_active(wp)
-        && !(VIsual_active && ((*p_sel == 'e') || ltoreq(*pos, VIsual)))) {
+        && !(VIsual_active && ((*p_sel == 'e') || ltoreq(*pos, WIN_PRIMANCHOR(curwin))))) {
       // cursor at end
       *cursor = vcol + incr - 1;
     } else {

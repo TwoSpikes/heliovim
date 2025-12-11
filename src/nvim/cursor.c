@@ -397,16 +397,18 @@ void check_cursor(win_T *wp)
 /// Can be called when in Visual mode and a change has been made.
 void check_visual_pos(void)
 {
-  if (VIsual.lnum > curbuf->b_ml.ml_line_count) {
-    VIsual.lnum = curbuf->b_ml.ml_line_count;
-    VIsual.col = 0;
-    VIsual.coladd = 0;
-  } else {
-    int len = ml_get_len(VIsual.lnum);
+  pos_T *anchor = &WIN_PRIMANCHOR(curwin);
 
-    if (VIsual.col > len) {
-      VIsual.col = len;
-      VIsual.coladd = 0;
+  if (anchor->lnum > curbuf->b_ml.ml_line_count) {
+    anchor->lnum = curbuf->b_ml.ml_line_count;
+    anchor->col = 0;
+    anchor->coladd = 0;
+  } else {
+    int len = ml_get_len(anchor->lnum);
+
+    if (anchor->col > len) {
+      anchor->col = len;
+      anchor->coladd = 0;
     }
   }
 }

@@ -454,8 +454,6 @@ EXTERN int sandbox INIT( = 0);
 /// Batch-mode: "-es", "-Es", "-l" commandline argument was given.
 EXTERN bool silent_mode INIT( = false);
 
-/// Start position of active Visual selection.
-EXTERN pos_T VIsual;
 /// Whether Visual mode is active.
 EXTERN bool VIsual_active INIT( = false);
 /// Whether Select mode is active.

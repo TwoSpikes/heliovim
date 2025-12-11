@@ -1061,7 +1061,9 @@ void ex_copy(linenr_T line1, linenr_T line2, linenr_T n)
     return;
   }
 
-  pos_T *cursor = &WIN_PRIMCURS(curwin);
+  selection_T *primsel = &WIN_PRIMSEL(curwin);
+  pos_T *cursor = &primsel->cursor;
+  pos_T *anchor = &primsel->anchor;
 
   cursor->lnum = n;
   while (line1 <= line2) {
@@ -1086,7 +1088,7 @@ void ex_copy(linenr_T line1, linenr_T line2, linenr_T n)
 
   appended_lines_mark(n, count);
   if (VIsual_active) {
-    check_pos(curbuf, &VIsual);
+    check_pos(curbuf, anchor);
   }
 
   msgmore(count);
