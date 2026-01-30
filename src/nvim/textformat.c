@@ -154,7 +154,7 @@ void internal_format(int textwidth, int second_indent, int flags, bool format_on
     }
 
     // find column of textwidth border
-    coladvance(curwin, (colnr_T)textwidth);
+    coladvance(curwin, (colnr_T)textwidth, curwin->w_primsel);
     wantcol = cursor->col;
 
     cursor->col = startcol;
@@ -179,7 +179,7 @@ void internal_format(int textwidth, int second_indent, int flags, bool format_on
         // find start of sequence of blanks
         int wcc = 0;  // counter for whitespace chars
         while (cursor->col > 0 && WHITECHAR(cc)) {
-          dec_cursor();
+          dec_cursor(curwin->w_primsel);
           cc = gchar_cursor();
 
           // Increment count of how many whitespace chars in this
@@ -213,7 +213,7 @@ void internal_format(int textwidth, int second_indent, int flags, bool format_on
             break;
           }
           col = cursor->col;
-          dec_cursor();
+          dec_cursor(curwin->w_primsel);
           cc = gchar_cursor();
 
           if (WHITECHAR(cc)) {
@@ -222,7 +222,7 @@ void internal_format(int textwidth, int second_indent, int flags, bool format_on
           cursor->col = col;
         }
 
-        inc_cursor();
+        inc_cursor(curwin->w_primsel);
 
         end_foundcol = end_col + 1;
         foundcol = cursor->col;
@@ -240,7 +240,7 @@ void internal_format(int textwidth, int second_indent, int flags, bool format_on
             break;
           }
           col = cursor->col;
-          inc_cursor();
+          inc_cursor(curwin->w_primsel);
           ncc = gchar_cursor();
           allow_break = utf_allow_break(cc, ncc);
 
@@ -262,7 +262,7 @@ void internal_format(int textwidth, int second_indent, int flags, bool format_on
         ncc = cc;
         col = cursor->col;
 
-        dec_cursor();
+        dec_cursor(curwin->w_primsel);
         cc = gchar_cursor();
 
         if (WHITECHAR(cc)) {
@@ -302,7 +302,7 @@ void internal_format(int textwidth, int second_indent, int flags, bool format_on
             // it's safe to inc_cursor.
             col = cursor->col;
 
-            inc_cursor();
+            inc_cursor(curwin->w_primsel);
             cc = ncc;
             ncc = gchar_cursor();
             // handle insert
@@ -322,7 +322,7 @@ void internal_format(int textwidth, int second_indent, int flags, bool format_on
       if (cursor->col == 0) {
         break;
       }
-      dec_cursor();
+      dec_cursor(curwin->w_primsel);
     }
 
     if (foundcol == 0) {                // no spaces, cannot break line
@@ -347,7 +347,7 @@ void internal_format(int textwidth, int second_indent, int flags, bool format_on
     cursor->col = foundcol;
     while ((cc = gchar_cursor(), WHITECHAR(cc))
            && (!fo_white_par || cursor->col < startcol)) {
-      inc_cursor();
+      inc_cursor(curwin->w_primsel);
     }
     startcol -= cursor->col;
     startcol = MAX(startcol, 0);
@@ -634,11 +634,11 @@ void auto_format(bool trailblank, bool prev_line)
   // next they are not joined back together.
   bool wasatend = (pos.col == get_cursor_line_len());
   if (*old != NUL && !trailblank && wasatend) {
-    dec_cursor();
+    dec_cursor(curwin->w_primsel);
     int cc = gchar_cursor();
     if (!WHITECHAR(cc) && cursor->col > 0
         && has_format_option(FO_ONE_LETTER)) {
-      dec_cursor();
+      dec_cursor(curwin->w_primsel);
     }
     cc = gchar_cursor();
     if (WHITECHAR(cc)) {
@@ -675,7 +675,7 @@ void auto_format(bool trailblank, bool prev_line)
   if (cursor->lnum > curbuf->b_ml.ml_line_count) {
     // "cannot happen"
     cursor->lnum = curbuf->b_ml.ml_line_count;
-    coladvance(curwin, MAXCOL);
+    coladvance(curwin, MAXCOL, curwin->w_primsel);
   } else {
     check_cursor_col(curwin);
   }
@@ -721,9 +721,9 @@ void check_auto_format(bool end_insert)
   } else {
     int c = ' ';
     if (!end_insert) {
-      inc_cursor();
+      inc_cursor(curwin->w_primsel);
       c = gchar_cursor();
-      dec_cursor();
+      dec_cursor(curwin->w_primsel);
     }
     if (c != NUL) {
       // The space is no longer at the end of the line, delete it.
@@ -1045,9 +1045,9 @@ void format_lines(linenr_T line_count, bool avoid_fex)
 
         // put cursor on last non-space
         State = MODE_NORMAL;  // don't go past end-of-line
-        coladvance(curwin, MAXCOL);
+        coladvance(curwin, MAXCOL, curwin->w_primsel);
         while (cursor->col && ascii_isspace(gchar_cursor())) {
-          dec_cursor();
+          dec_cursor(curwin->w_primsel);
         }
 
         // do the formatting, without 'showmode'

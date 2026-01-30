@@ -2422,7 +2422,7 @@ int current_search(int count, bool forward)
 
   // Correct cursor when 'selection' is exclusive
   if (VIsual_active && *p_sel == 'e' && lt(*anchor, *cursor)) {
-    dec_cursor();
+    dec_cursor(curwin->w_primsel);
   }
 
   // When searching forward and the cursor is at the start of the Visual
@@ -2519,7 +2519,7 @@ int current_search(int count, bool forward)
       *cursor = pos;
     } else {
       // put the cursor on last character of match
-      dec_cursor();
+      dec_cursor(curwin->w_primsel);
     }
   } else if (VIsual_active && lt(*cursor, *anchor) && forward) {
     *cursor = pos;   // put the cursor on the start of the match
@@ -2530,7 +2530,7 @@ int current_search(int count, bool forward)
   if (*p_sel == 'e') {
     // Correction for exclusive selection depends on the direction.
     if (forward && ltoreq(*anchor, *cursor)) {
-      inc_cursor();
+      inc_cursor(curwin->w_primsel);
     } else if (!forward && ltoreq(*cursor, *anchor)) {
       inc(anchor);
     }

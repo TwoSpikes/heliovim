@@ -2606,7 +2606,7 @@ static bool ins_compl_stop(const int c, const int prev_mode, bool retval)
 
     // put the cursor on the last char, for 'tw' formatting
     if (prev_col > 0) {
-      dec_cursor();
+      dec_cursor(curwin->w_primsel);
     }
 
     // only format when something was inserted
@@ -2616,7 +2616,7 @@ static bool ins_compl_stop(const int c, const int prev_mode, bool retval)
 
     if (prev_col > 0
         && get_cursor_line_ptr()[cursor->col] != NUL) {
-      inc_cursor();
+      inc_cursor(curwin->w_primsel);
     }
   }
 

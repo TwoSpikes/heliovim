@@ -789,7 +789,7 @@ bool do_mouse(oparg_T *oap, int c, int dir, int count, bool fixindent)
       // move VIsual to the right column
       start_visual = *cursor;              // save the cursor pos
       *cursor = end_visual;
-      coladvance(curwin, end_visual.col);
+      coladvance(curwin, end_visual.col, curwin->w_primsel);
       *anchor = *cursor;
       *cursor = start_visual;              // restore the cursor
     } else {
@@ -1539,7 +1539,7 @@ foldclick:;
 
   primsel->curswant = col;
   curwin->w_set_curswant = false;       // May still have been true
-  if (coladvance(curwin, col) == FAIL) {        // Mouse click beyond end of line
+  if (coladvance(curwin, col, curwin->w_primsel) == FAIL) {   // Mouse click beyond end of line
     if (inclusive != NULL) {
       *inclusive = true;
     }

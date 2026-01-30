@@ -1270,7 +1270,7 @@ static void cursor_correct_sms(win_T *wp)
 
   if (col != primsel->virtcol) {
     primsel->curswant = col;
-    int rc = coladvance(wp, primsel->curswant);
+    int rc = coladvance(wp, primsel->curswant, wp->w_primsel);
     // validate_virtcol() marked various things as valid, but after
     // moving the cursor they need to be recomputed
     wp->w_valid &= ~(VALID_WROW|VALID_WCOL|VALID_CHEIGHT|VALID_CROW|VALID_VIRTCOL);
@@ -1341,7 +1341,7 @@ void scroll_redraw(int up, linenr_T count)
 
   cursor_correct_sms(curwin);
   if (cursor->lnum != prev_lnum) {
-    coladvance(curwin, primsel->curswant);
+    coladvance(curwin, primsel->curswant, curwin->w_primsel);
   }
   redraw_later(curwin, UPD_VALID);
 }
@@ -1463,7 +1463,7 @@ bool scrolldown(win_T *wp, linenr_T line_count, int byfold)
   if (moved) {
     // Move cursor to first line of closed fold.
     foldAdjustCursor(wp);
-    coladvance(wp, primsel->curswant);
+    coladvance(wp, primsel->curswant, wp->w_primsel);
   }
   cursor->lnum = MAX(cursor->lnum, wp->w_topline);
 
@@ -1562,7 +1562,7 @@ bool scrollup(win_T *wp, linenr_T line_count, bool byfold)
     cursor->lnum = wp->w_topline;
     wp->w_valid &=
       ~(VALID_WROW|VALID_WCOL|VALID_CHEIGHT|VALID_CROW|VALID_VIRTCOL);
-    coladvance(wp, primsel->curswant);
+    coladvance(wp, primsel->curswant, wp->w_primsel);
   }
 
   bool moved = topline != wp->w_topline || botline != wp->w_botline;

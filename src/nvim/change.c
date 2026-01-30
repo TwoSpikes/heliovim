@@ -720,7 +720,7 @@ void ins_char_bytes(char *buf, size_t charlen)
 
   // Break tabs if needed.
   if (virtual_active(curwin) && cursor->coladd > 0) {
-    coladvance_force(getviscol());
+    coladvance_force(getviscol(curwin->w_primsel), curwin->w_primsel);
   }
 
   size_t col = (size_t)cursor->col;
@@ -826,7 +826,7 @@ void ins_str(char *s, size_t slen)
   linenr_T lnum = cursor->lnum;
 
   if (virtual_active(curwin) && cursor->coladd > 0) {
-    coladvance_force(getviscol());
+    coladvance_force(getviscol(curwin->w_primsel), curwin->w_primsel);
   }
 
   colnr_T col = cursor->col;

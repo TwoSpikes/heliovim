@@ -4522,7 +4522,7 @@ skip:
       // when interactive leave cursor on the match
       if (!subflags.do_ask) {
         if (endcolumn) {
-          coladvance(curwin, MAXCOL);
+          coladvance(curwin, MAXCOL, curwin->w_primsel);
         } else {
           beginline(BL_WHITE | BL_FIX);
         }

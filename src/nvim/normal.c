@@ -181,7 +181,7 @@ static const struct nv_cmd {
   { Ctrl_K,    nv_error,       0,                      0 },
   { Ctrl_L,    nv_clear,       0,                      0 },
   { CAR,       nv_down,        0,                      true },
-  { Ctrl_N,    nv_down,        NV_STS,                 false },
+  { Ctrl_N,    nv_add_cursor,  0,                 0 },
   { Ctrl_O,    nv_ctrlo,       0,                      0 },
   { Ctrl_P,    nv_up,          NV_STS,                 false },
   { Ctrl_Q,    nv_visual,      0,                      false },
@@ -212,7 +212,7 @@ static const struct nv_cmd {
   { '(',       nv_brace,       0,                      BACKWARD },
   { ')',       nv_brace,       0,                      FORWARD },
   { '*',       nv_ident,       0,                      0 },
-  { '+',       nv_down,        0,                      true },
+  { '+',       nv_down,        0,                      false },
   { ',',       nv_csearch,     0,                      true },
   { '-',       nv_up,          0,                      true },
   { '.',       nv_dot,         NV_KEEPREG,             0 },
@@ -2281,6 +2281,17 @@ static void nv_help(cmdarg_T *cap)
   }
 }
 
+/// CTRL-N: Add a cursor below the primary cursor and make it primary
+static void nv_add_cursor(cmdarg_T *cap)
+{
+  selection_T *old_primsel = &WIN_PRIMSEL(curwin);
+  selection_T new_selection;
+  memcpy(&new_selection, old_primsel, sizeof(selection_T));
+  kv_push(curwin->w_selections, new_selection);
+  curwin->w_primsel = curwin->w_selections.size - 1;
+  do_cmdline_cmd("normal! k");
+}
+
 /// CTRL-A and CTRL-X: Add or subtract from letter or number under cursor.
 static void nv_addsub(cmdarg_T *cap)
 {
@@ -2617,9 +2628,9 @@ bool nv_screengo(oparg_T *oap, int dir, int dist, bool skip_conceal)
   }
 
   if (virtual_active(curwin) && atend) {
-    coladvance(curwin, MAXCOL);
+    coladvance(curwin, MAXCOL, curwin->w_primsel);
   } else {
-    coladvance(curwin, primsel->curswant);
+    coladvance(curwin, primsel->curswant, curwin->w_primsel);
   }
 
   if (cursor->col > 0 && curwin->w_p_wrap) {
@@ -3819,7 +3830,7 @@ static void nv_left(cmdarg_T *cap)
            || (cap->cmdchar == K_LEFT && vim_strchr(p_ww, '<') != NULL))
           && cursor->lnum > 1) {
         cursor->lnum--;
-        coladvance(curwin, MAXCOL);
+        coladvance(curwin, MAXCOL, curwin->w_primsel);
         curwin->w_set_curswant = true;
 
         // When the NL before the first char has to be deleted we
@@ -3869,7 +3880,7 @@ static void nv_up(cmdarg_T *cap)
 }
 
 /// Cursor down commands.
-/// cap->arg is true for CR and "+": Move cursor to first non-blank.
+/// cap->arg is true for CR: Move cursor to first non-blank.
 static void nv_down(cmdarg_T *cap)
 {
   pos_T *cursor = &WIN_PRIMCURS(curwin);
@@ -4187,7 +4198,9 @@ static void nv_bracket_block(cmdarg_T *cap, const pos_T *old_pos)
     }
     while (n > 0) {
       while (true) {
-        if ((findc == '{' ? dec_cursor() : inc_cursor()) < 0) {
+        if ((findc == '{'
+              ? dec_cursor(curwin->w_primsel)
+              : inc_cursor(curwin->w_primsel)) < 0) {
           // if not found anything, that's an error
           if (pos == NULL) {
             clearopbeep(cap->oap);
@@ -4568,11 +4581,13 @@ static void nv_replace(cmdarg_T *cap)
     }
     if (gchar_cursor() == NUL) {
       // Add extra space and put the cursor on the first one.
-      coladvance_force((colnr_T)(getviscol() + cap->count1));
+      coladvance_force((colnr_T)
+                       (getviscol(curwin->w_primsel) + cap->count1),
+                       curwin->w_primsel);
       assert(cap->count1 <= INT_MAX);
       cursor->col -= (colnr_T)cap->count1;
     } else if (gchar_cursor() == TAB) {
-      coladvance_force(getviscol());
+      coladvance_force(getviscol(curwin->w_primsel), curwin->w_primsel);
     }
   }
 
@@ -4673,7 +4688,7 @@ static void v_swap_corners(int cmdchar)
     pos_T old_cursor = *cursor;
     getvcols(curwin, &old_cursor, anchor, &left, &right);
     cursor->lnum = anchor->lnum;
-    coladvance(curwin, left);
+    coladvance(curwin, left, curwin->w_primsel);
     *anchor = *cursor;
 
     cursor->lnum = old_cursor.lnum;
@@ -4683,7 +4698,7 @@ static void v_swap_corners(int cmdchar)
     if (old_cursor.lnum >= anchor->lnum && *p_sel == 'e') {
       primsel->curswant++;
     }
-    coladvance(curwin, primsel->curswant);
+    coladvance(curwin, primsel->curswant, curwin->w_primsel);
     if (cursor->col == old_cursor.col
         && (!virtual_active(curwin)
             || cursor->coladd ==
@@ -4692,11 +4707,11 @@ static void v_swap_corners(int cmdchar)
       if (old_cursor.lnum <= anchor->lnum && *p_sel == 'e') {
         right++;
       }
-      coladvance(curwin, right);
+      coladvance(curwin, right, curwin->w_primsel);
       *anchor = *cursor;
 
       cursor->lnum = old_cursor.lnum;
-      coladvance(curwin, left);
+      coladvance(curwin, left, curwin->w_primsel);
       primsel->curswant = left;
     }
   } else {
@@ -4727,7 +4742,7 @@ static void nv_Replace(cmdarg_T *cap)
     emsg(_(e_modifiable));
   } else {
     if (virtual_active(curwin)) {
-      coladvance(curwin, getviscol());
+      coladvance(curwin, getviscol(curwin->w_primsel), curwin->w_primsel);
     }
     invoke_edit(cap, false, cap->arg ? 'V' : 'R', false);
   }
@@ -4762,7 +4777,7 @@ static void nv_vreplace(cmdarg_T *cap)
     stuffcharReadbuff(cap->extra_char);
     stuffcharReadbuff(ESC);
     if (virtual_active(curwin)) {
-      coladvance(curwin, getviscol());
+      coladvance(curwin, getviscol(curwin->w_primsel), curwin->w_primsel);
     }
     invoke_edit(cap, true, 'v', false);
   }
@@ -4792,7 +4807,7 @@ static void n_swapchar(cmdarg_T *cap)
   pos_T startpos = *cursor;
   for (int n = cap->count1; n > 0; n--) {
     did_change |= swapchar(cap->oap->op_type, cursor);
-    inc_cursor();
+    inc_cursor(curwin->w_primsel);
     if (gchar_cursor() == NUL) {
       if (vim_strchr(p_ww, '~') != NULL
           && cursor->lnum < curbuf->b_ml.ml_line_count) {
@@ -5090,11 +5105,11 @@ static void nv_visual(cmdarg_T *cap)
         } else {
           primsel->curswant = resel_VIsual_vcol;
         }
-        coladvance(curwin, primsel->curswant);
+        coladvance(curwin, primsel->curswant, curwin->w_primsel);
       }
       if (resel_VIsual_vcol == MAXCOL) {
         primsel->curswant = MAXCOL;
-        coladvance(curwin, MAXCOL);
+        coladvance(curwin, MAXCOL, curwin->w_primsel);
       } else if (VIsual_mode == Ctrl_V) {
         // Update curswant on the original line, that is where "col" is valid.
         linenr_T lnum = cursor->lnum;
@@ -5106,7 +5121,7 @@ static void nv_visual(cmdarg_T *cap)
         if (*p_sel == 'e') {
           primsel->curswant++;
         }
-        coladvance(curwin, primsel->curswant);
+        coladvance(curwin, primsel->curswant, curwin->w_primsel);
       } else {
         curwin->w_set_curswant = true;
       }
@@ -5166,7 +5181,7 @@ static void n_start_visual_mode(int c)
   //
   if (c == Ctrl_V && (get_ve_flags(curwin) & kOptVeFlagBlock) && gchar_cursor() == TAB) {
     validate_virtcol(curwin);
-    coladvance(curwin, primsel->virtcol);
+    coladvance(curwin, primsel->virtcol, curwin->w_primsel);
   }
   *anchor = *cursor;
 
@@ -5313,7 +5328,7 @@ void nv_g_home_m_cmd(cmdarg_T *cap)
     i += (curwin->w_view_width - win_col_off(curwin)
           + ((curwin->w_p_wrap && i > 0) ? win_col_off2(curwin) : 0)) / 2;
   }
-  coladvance(curwin, (colnr_T)i);
+  coladvance(curwin, (colnr_T)i, curwin->w_primsel);
   if (flag) {
     do {
       i = gchar_cursor();
@@ -5381,7 +5396,7 @@ static void nv_g_dollar_cmd(cmdarg_T *cap)
       if (primsel->virtcol >= (colnr_T)width1) {
         i += ((primsel->virtcol - width1) / width2 + 1) * width2;
       }
-      coladvance(curwin, (colnr_T)i);
+      coladvance(curwin, (colnr_T)i, curwin->w_primsel);
 
       // Make sure we stick in this column.
       update_curswant_force();
@@ -5402,7 +5417,7 @@ static void nv_g_dollar_cmd(cmdarg_T *cap)
       cursor_down(cap->count1 - 1, false);
     }
     i = curwin->w_leftcol + curwin->w_view_width - col_off - 1;
-    coladvance(curwin, (colnr_T)i);
+    coladvance(curwin, (colnr_T)i, curwin->w_primsel);
 
     // if the character doesn't fit move one back
     if (cursor->col > 0 && utf_ptr2cells(get_cursor_pos_ptr()) > 1) {
@@ -5563,9 +5578,9 @@ static void nv_g_cmd(cmdarg_T *cap)
     oap->inclusive = false;
     i = linetabsize(curwin, cursor->lnum);
     if (cap->count0 > 0 && cap->count0 <= 100) {
-      coladvance(curwin, (colnr_T)(i * cap->count0 / 100));
+      coladvance(curwin, (colnr_T)(i * cap->count0 / 100), curwin->w_primsel);
     } else {
-      coladvance(curwin, (colnr_T)(i / 2));
+      coladvance(curwin, (colnr_T)(i / 2), curwin->w_primsel);
     }
     curwin->w_set_curswant = true;
     break;
@@ -5977,7 +5992,7 @@ static void nv_pipe(cmdarg_T *cap)
   beginline(0);
   selection_T *primsel = &WIN_PRIMSEL(curwin);
   if (cap->count0 > 0) {
-    coladvance(curwin, (colnr_T)(cap->count0 - 1));
+    coladvance(curwin, (colnr_T)(cap->count0 - 1), curwin->w_primsel);
     primsel->curswant = (colnr_T)(cap->count0 - 1);
   } else {
     primsel->curswant = 0;
@@ -6106,7 +6121,7 @@ static void adjust_for_sel(cmdarg_T *cap)
   pos_T *anchor = &primsel->anchor;
   if (VIsual_active && cap->oap->inclusive && *p_sel == 'e'
       && gchar_cursor() != NUL && lt(*anchor, *cursor)) {
-    inc_cursor();
+    inc_cursor(curwin->w_primsel);
     cap->oap->inclusive = false;
     VIsual_select_exclu_adj = true;
   }
@@ -6272,7 +6287,7 @@ void set_cursor_for_append_to_line(void)
     // Pretend Insert mode here to allow the cursor on the
     // character past the end of the line
     State = MODE_INSERT;
-    coladvance(curwin, MAXCOL);
+    coladvance(curwin, MAXCOL, curwin->w_primsel);
     State = save_State;
   } else {
     WIN_PRIMCURS(curwin).col += (colnr_T)strlen(get_cursor_pos_ptr());
@@ -6318,7 +6333,7 @@ static void nv_edit(cmdarg_T *cap)
               || *get_cursor_pos_ptr() == TAB)) {
         cursor->coladd++;
       } else if (*get_cursor_pos_ptr() != NUL) {
-        inc_cursor();
+        inc_cursor(curwin->w_primsel);
       }
       break;
     }
@@ -6329,7 +6344,7 @@ static void nv_edit(cmdarg_T *cap)
       // Pretend Insert mode here to allow the cursor on the
       // character past the end of the line
       State = MODE_INSERT;
-      coladvance(curwin, getviscol());
+      coladvance(curwin, getviscol(curwin->w_primsel), curwin->w_primsel);
       State = save_State;
     }
 
@@ -6689,7 +6704,7 @@ static void nv_put_opt(cmdarg_T *cap, bool fix_indent)
     // line.
     if (cursor->lnum > curbuf->b_ml.ml_line_count) {
       cursor->lnum = curbuf->b_ml.ml_line_count;
-      coladvance(curwin, MAXCOL);
+      coladvance(curwin, MAXCOL, curwin->w_primsel);
     }
   }
   auto_format(false, true);

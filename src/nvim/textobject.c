@@ -321,14 +321,14 @@ int fwd_word(int count, bool bigword, bool eol)
     // When inside a range of folded lines, move to the last char of the
     // last line.
     if (hasFolding(curwin, cursor->lnum, NULL, &cursor->lnum)) {
-      coladvance(curwin, MAXCOL);
+      coladvance(curwin, MAXCOL, curwin->w_primsel);
     }
     int sclass = cls();  // starting class
 
     // We always move at least one character, unless on the last
     // character in the buffer.
     int last_line = (cursor->lnum == curbuf->b_ml.ml_line_count);
-    int i = inc_cursor();
+    int i = inc_cursor(curwin->w_primsel);
     if (i == -1 || (i >= 1 && last_line)) {   // started at last char in file
       return FAIL;
     }
@@ -339,7 +339,7 @@ int fwd_word(int count, bool bigword, bool eol)
     // Go one char past end of current word (if any)
     if (sclass != 0) {
       while (cls() == sclass) {
-        i = inc_cursor();
+        i = inc_cursor(curwin->w_primsel);
         if (i == -1 || (i >= 1 && eol && count == 0)) {
           return OK;
         }
@@ -353,7 +353,7 @@ int fwd_word(int count, bool bigword, bool eol)
         break;
       }
 
-      i = inc_cursor();
+      i = inc_cursor(curwin->w_primsel);
       if (i == -1 || (i >= 1 && eol && count == 0)) {
         return OK;
       }
@@ -381,7 +381,8 @@ int bck_word(int count, bool bigword, bool stop)
       cursor->col = 0;
     }
     sclass = cls();
-    if (dec_cursor() == -1) {           // started at start of file
+    if (dec_cursor(curwin->w_primsel) == -1) {
+      // started at start of file
       return FAIL;
     }
 
@@ -393,7 +394,8 @@ int bck_word(int count, bool bigword, bool stop)
             && LINEEMPTY(cursor->lnum)) {
           goto finished;
         }
-        if (dec_cursor() == -1) {       // hit start of file, stop here
+        if (dec_cursor(curwin->w_primsel) == -1) {
+          // hit start of file, stop here
           return OK;
         }
       }
@@ -404,7 +406,7 @@ int bck_word(int count, bool bigword, bool stop)
       }
     }
 
-    inc_cursor();                       // overshot - forward one
+    inc_cursor(curwin->w_primsel);  // overshot - forward one
 finished:
     stop = false;
   }
@@ -443,10 +445,10 @@ int end_word(int count, bool bigword, bool stop, bool empty)
     // When inside a range of folded lines, move to the last char of the
     // last line.
     if (hasFolding(curwin, cursor->lnum, NULL, &cursor->lnum)) {
-      coladvance(curwin, MAXCOL);
+      coladvance(curwin, MAXCOL, curwin->w_primsel);
     }
     sclass = cls();
-    if (inc_cursor() == -1) {
+    if (inc_cursor(curwin->w_primsel) == -1) {
       return FAIL;
     }
 
@@ -465,7 +467,8 @@ int end_word(int count, bool bigword, bool stop, bool empty)
             && LINEEMPTY(cursor->lnum)) {
           goto finished;
         }
-        if (inc_cursor() == -1) {           // hit end of file, stop here
+        if (inc_cursor(curwin->w_primsel) == -1) {
+          // hit end of file, stop here
           return FAIL;
         }
       }
@@ -475,7 +478,7 @@ int end_word(int count, bool bigword, bool stop, bool empty)
         return FAIL;
       }
     }
-    dec_cursor();                       // overshot - one char backward
+    dec_cursor(curwin->w_primsel);      // overshot - one char backward
 finished:
     stop = false;                       // we move only one word less
   }
@@ -497,7 +500,7 @@ int bckend_word(int count, bool bigword, bool eol)
   while (--count >= 0) {
     int i;
     int sclass = cls();  // starting class
-    if ((i = dec_cursor()) == -1) {
+    if ((i = dec_cursor(curwin->w_primsel)) == -1) {
       return FAIL;
     }
     if (eol && i == 1) {
@@ -507,7 +510,7 @@ int bckend_word(int count, bool bigword, bool eol)
     // Move backward to before the start of this word.
     if (sclass != 0) {
       while (cls() == sclass) {
-        if ((i = dec_cursor()) == -1 || (eol && i == 1)) {
+        if ((i = dec_cursor(curwin->w_primsel)) == -1 || (eol && i == 1)) {
           return OK;
         }
       }
@@ -518,7 +521,7 @@ int bckend_word(int count, bool bigword, bool eol)
       if (cursor->col == 0 && LINEEMPTY(cursor->lnum)) {
         break;
       }
-      if ((i = dec_cursor()) == -1 || (eol && i == 1)) {
+      if ((i = dec_cursor(curwin->w_primsel)) == -1 || (eol && i == 1)) {
         return OK;
       }
     }
@@ -533,7 +536,9 @@ int bckend_word(int count, bool bigword, bool eol)
 static bool skip_chars(int cclass, int dir)
 {
   while (cls() == cclass) {
-    if ((dir == FORWARD ? inc_cursor() : dec_cursor()) == -1) {
+    if ((dir == FORWARD
+          ? inc_cursor(curwin->w_primsel)
+          : dec_cursor(curwin->w_primsel)) == -1) {
       return true;
     }
   }
@@ -550,9 +555,9 @@ static void back_in_line(void)
     if (cursor->col == 0) {        // stop at start of line
       break;
     }
-    dec_cursor();
+    dec_cursor(curwin->w_primsel);
     if (cls() != sclass) {                  // stop at start of word
-      inc_cursor();
+      inc_cursor(curwin->w_primsel);
       break;
     }
   }
@@ -607,7 +612,7 @@ int current_word(oparg_T *oap, int count, bool include, bool bigword)
 
   // Correct cursor when 'selection' is exclusive
   if (VIsual_active && *p_sel == 'e' && lt(*anchor, *cursor)) {
-    dec_cursor();
+    dec_cursor(curwin->w_primsel);
   }
 
   // When Visual mode is not active, or when the VIsual area is only one
@@ -720,7 +725,7 @@ int current_word(oparg_T *oap, int count, bool include, bool bigword)
 
   if (VIsual_active) {
     if (*p_sel == 'e' && inclusive && ltoreq(*anchor, *cursor)) {
-      inc_cursor();
+      inc_cursor(curwin->w_primsel);
     }
     if (VIsual_mode == 'V') {
       VIsual_mode = 'v';
@@ -918,7 +923,7 @@ int current_block(oparg_T *oap, int count, bool include, int what, int other)
     setpcmark();
     if (what == '{') {                  // ignore indent
       while (inindent(1)) {
-        if (inc_cursor() != 0) {
+        if (inc_cursor(curwin->w_primsel) != 0) {
           break;
         }
       }
@@ -1125,7 +1130,7 @@ int current_tagblock(oparg_T *oap, int count_arg, bool include)
 
     // ignore indent
     while (inindent(1)) {
-      if (inc_cursor() != 0) {
+      if (inc_cursor(curwin->w_primsel) != 0) {
         break;
       }
     }
@@ -1133,18 +1138,18 @@ int current_tagblock(oparg_T *oap, int count_arg, bool include)
     if (in_html_tag(false)) {
       // cursor on start tag, move to its '>'
       while (*get_cursor_pos_ptr() != '>') {
-        if (inc_cursor() < 0) {
+        if (inc_cursor(curwin->w_primsel) < 0) {
           break;
         }
       }
     } else if (in_html_tag(true)) {
       // cursor on end tag, move to just before it
       while (*get_cursor_pos_ptr() != '<') {
-        if (dec_cursor() < 0) {
+        if (dec_cursor(curwin->w_primsel) < 0) {
           break;
         }
       }
-      dec_cursor();
+      dec_cursor(curwin->w_primsel);
       old_end = *cursor;
     }
   } else if (lt(*anchor, *cursor)) {
@@ -1169,7 +1174,7 @@ again:
   pos_T start_pos = *cursor;
 
   // Search for matching "</aaa>".  First isolate the "aaa".
-  inc_cursor();
+  inc_cursor(curwin->w_primsel);
   char *p = get_cursor_pos_ptr();
   for (cp = p;
        *cp != NUL && *cp != '>' && !ascii_iswhite(*cp);
@@ -1204,7 +1209,7 @@ again:
   if (do_include) {
     // Include up to the '>'.
     while (*get_cursor_pos_ptr() != '>') {
-      if (inc_cursor() < 0) {
+      if (inc_cursor(curwin->w_primsel) < 0) {
         break;
       }
     }
@@ -1217,7 +1222,7 @@ again:
       // do not decrement cursor
       is_inclusive = false;
     } else if (*c == '<') {
-      dec_cursor();
+      dec_cursor(curwin->w_primsel);
     }
   }
   pos_T end_pos = *cursor;
@@ -1227,10 +1232,10 @@ again:
     // but skip over '>' if it appears in quotes
     bool in_quotes = false;
     *cursor = start_pos;
-    while (inc_cursor() >= 0) {
+    while (inc_cursor(curwin->w_primsel) >= 0) {
       p = get_cursor_pos_ptr();
       if (*p == '>' && !in_quotes) {
-        inc_cursor();
+        inc_cursor(curwin->w_primsel);
         start_pos = *cursor;
         break;
       } else if (*p == '"' || *p == '\'') {
@@ -1257,7 +1262,7 @@ again:
     if (lt(end_pos, start_pos)) {
       *cursor = start_pos;
     } else if (*p_sel == 'e') {
-      inc_cursor();
+      inc_cursor(curwin->w_primsel);
     }
     *anchor = start_pos;
     VIsual_mode = 'v';
@@ -1527,7 +1532,7 @@ bool current_quote(oparg_T *oap, int count, bool include, int quotechar)
     vis_empty = equalpos(*anchor, *cursor);
     if (*p_sel == 'e') {
       if (vis_bef_curs) {
-        dec_cursor();
+        dec_cursor(curwin->w_primsel);
         did_exclusive_adj = true;
       } else if (!vis_empty) {
         dec(anchor);
@@ -1701,14 +1706,15 @@ bool current_quote(oparg_T *oap, int count, bool include, int quotechar)
   cursor->col = col_end;
   if ((include || count > 1
        // After vi" another i" must include the ".
-       || (!vis_empty && inside_quotes)) && inc_cursor() == 2) {
+       || (!vis_empty && inside_quotes))
+      && inc_cursor(curwin->w_primsel) == 2) {
     inclusive = true;
   }
   if (VIsual_active) {
     if (vis_empty || vis_bef_curs) {
       // decrement cursor when 'selection' is not exclusive
       if (*p_sel != 'e') {
-        dec_cursor();
+        dec_cursor(curwin->w_primsel);
       }
     } else {
       // Cursor is at start of Visual area.  Set the end of the Visual
@@ -1719,7 +1725,7 @@ bool current_quote(oparg_T *oap, int count, bool include, int quotechar)
               && (uint8_t)line[anchor->col] != quotechar
               && (line[anchor->col] == NUL
                   || (uint8_t)line[anchor->col + 1] != quotechar))) {
-        dec_cursor();
+        dec_cursor(curwin->w_primsel);
         *anchor = *cursor;
       }
       cursor->col = col_start;
@@ -1738,7 +1744,7 @@ bool current_quote(oparg_T *oap, int count, bool include, int quotechar)
 abort_search:
   if (VIsual_active && *p_sel == 'e') {
     if (did_exclusive_adj) {
-      inc_cursor();
+      inc_cursor(curwin->w_primsel);
     }
     if (restore_vis_bef) {
       pos_T t = *cursor;

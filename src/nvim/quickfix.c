@@ -3047,7 +3047,7 @@ static void qf_jump_goto_line(linenr_T qf_lnum, int qf_col, char qf_viscol, char
     if (qf_col > 0) {
       cursor->coladd = 0;
       if (qf_viscol == true) {
-        coladvance(curwin, qf_col - 1);
+        coladvance(curwin, qf_col - 1, curwin->w_primsel);
       } else {
         cursor->col = qf_col - 1;
       }

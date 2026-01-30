@@ -2052,7 +2052,7 @@ const char *did_set_virtualedit(optset_T *args)
       // Recompute cursor position in case the new 've' setting
       // changes something.
       validate_virtcol(win);
-      coladvance(win, WIN_PRIMSEL(win).virtcol);
+      coladvance(win, WIN_PRIMSEL(win).virtcol, win->w_primsel);
     }
   }
   return NULL;

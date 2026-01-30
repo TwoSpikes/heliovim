@@ -474,7 +474,7 @@ int u_savecommon(buf_T *buf, linenr_T top, linenr_T bot, linenr_T newbot, bool r
     uhp->uh_getbot_entry = NULL;
     uhp->uh_cursor = *cursor;          // save cursor pos. for undo
     if (virtual_active(curwin) && cursor->coladd > 0) {
-      uhp->uh_cursor_vcol = getviscol();
+      uhp->uh_cursor_vcol = getviscol(curwin->w_primsel);
     } else {
       uhp->uh_cursor_vcol = -1;
     }
@@ -2486,7 +2486,7 @@ static void u_undoredo(bool undo, bool do_buf_event)
     if (curhead->uh_cursor.lnum == cursor->lnum) {
       cursor->col = curhead->uh_cursor.col;
       if (virtual_active(curwin) && curhead->uh_cursor_vcol >= 0) {
-        coladvance(curwin, curhead->uh_cursor_vcol);
+        coladvance(curwin, curhead->uh_cursor_vcol, curwin->w_primsel);
       } else {
         cursor->coladd = 0;
       }

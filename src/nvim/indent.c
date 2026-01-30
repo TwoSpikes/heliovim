@@ -1652,7 +1652,7 @@ void ex_retab(exarg_T *eap)
     }
     xfree(new_ts_str);
   }
-  coladvance(curwin, WIN_PRIMSEL(curwin).curswant);
+  coladvance(curwin, WIN_PRIMSEL(curwin).curswant, curwin->w_primsel);
 
   u_clearline(curbuf);
 }

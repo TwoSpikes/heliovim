@@ -30,21 +30,22 @@
 #include "cursor.c.generated.h"
 
 /// @return  the screen position of the cursor.
-int getviscol(void)
+int getviscol(size_t cursorind)
 {
+  pos_T *cursor = &curwin->w_selections.items[cursorind].cursor;
   colnr_T x;
 
-  getvvcol(curwin, &WIN_PRIMCURS(curwin), &x, NULL, NULL);
+  getvvcol(curwin, cursor, &x, NULL, NULL);
   return (int)x;
 }
 
 /// @return the screen position of character col with a coladd in the cursor line.
-int getviscol2(colnr_T col, colnr_T coladd)
+int getviscol2(colnr_T col, colnr_T coladd, size_t cursorind)
 {
   colnr_T x;
   pos_T pos;
 
-  pos.lnum = WIN_PRIMCURS(curwin).lnum;
+  pos.lnum = curwin->w_selections.items[cursorind].cursor.lnum;
   pos.col = col;
   pos.coladd = coladd;
   getvvcol(curwin, &pos, &x, NULL, NULL);
@@ -54,9 +55,9 @@ int getviscol2(colnr_T col, colnr_T coladd)
 /// Go to column "wcol", and add/insert white space as necessary to get the
 /// cursor in that column.
 /// The caller must have saved the cursor line for undo!
-int coladvance_force(colnr_T wcol)
+int coladvance_force(colnr_T wcol, size_t cursor)
 {
-  int rc = coladvance2(curwin, &WIN_PRIMCURS(curwin), true, false, wcol);
+  int rc = coladvance2(curwin, &curwin->w_selections.items[cursor].cursor, true, false, wcol, cursor);
 
   if (wcol == MAXCOL) {
     curwin->w_valid &= ~VALID_VIRTCOL;
@@ -74,14 +75,14 @@ int coladvance_force(colnr_T wcol)
 /// beginning at coladd 0.
 ///
 /// @return  OK if desired column is reached, FAIL if not
-int coladvance(win_T *wp, colnr_T wcol)
+int coladvance(win_T *wp, colnr_T wcol, size_t cursorind)
 {
-  int rc = getvpos(wp, &WIN_PRIMCURS(wp), wcol);
+  pos_T *cursor = &wp->w_selections.items[cursorind].cursor;
+  int rc = getvpos(wp, cursor, wcol, cursorind);
 
-  pos_T cursor = WIN_PRIMCURS(wp);
   if (wcol == MAXCOL || rc == FAIL) {
     wp->w_valid &= ~VALID_VIRTCOL;
-  } else if (*(ml_get_buf(wp->w_buffer, cursor.lnum) + cursor.col) != TAB) {
+  } else if (*(ml_get_buf(wp->w_buffer, cursor->lnum) + cursor->col) != TAB) {
     // Virtcol is valid when not on a TAB
     set_valid_virtcol(curwin, wcol);
   }
@@ -91,7 +92,7 @@ int coladvance(win_T *wp, colnr_T wcol)
 /// @param addspaces  change the text to achieve our goal? only for wp=curwin!
 /// @param finetune  change char offset for the exact column
 /// @param wcol_arg  column to move to (can be negative)
-static int coladvance2(win_T *wp, pos_T *pos, bool addspaces, bool finetune, colnr_T wcol_arg)
+static int coladvance2(win_T *wp, pos_T *pos, bool addspaces, bool finetune, colnr_T wcol_arg, size_t cursorind)
 {
   assert(wp == curwin || !addspaces);
   colnr_T wcol = wcol_arg;
@@ -113,7 +114,7 @@ static int coladvance2(win_T *wp, pos_T *pos, bool addspaces, bool finetune, col
     col = wcol;
 
     if ((addspaces || finetune) && !VIsual_active) {
-      colnr_T *curswant = &WIN_PRIMSEL(wp).curswant;
+      colnr_T *curswant = &wp->w_selections.items[cursorind].curswant;
       *curswant = linetabsize(wp, pos->lnum) + one_more;
       if (*curswant > 0) {
         (*curswant)--;
@@ -251,23 +252,23 @@ static int coladvance2(win_T *wp, pos_T *pos, bool addspaces, bool finetune, col
 /// Return in "pos" the position of the cursor advanced to screen column "wcol".
 ///
 /// @return  OK if desired column is reached, FAIL if not
-int getvpos(win_T *wp, pos_T *pos, colnr_T wcol)
+int getvpos(win_T *wp, pos_T *pos, colnr_T wcol, size_t cursor)
 {
-  return coladvance2(wp, pos, false, virtual_active(wp), wcol);
+  return coladvance2(wp, pos, false, virtual_active(wp), wcol, cursor);
 }
 
 /// Increment the cursor position.  See inc() for return values.
-int inc_cursor(void)
+int inc_cursor(size_t cursorind)
 {
-  return inc(&WIN_PRIMCURS(curwin));
+  return inc(&curwin->w_selections.items[cursorind].cursor);
 }
 
 /// Decrement the line pointer 'p' crossing line boundaries as necessary.
 ///
 /// @return  1 when crossing a line, -1 when at start of file, 0 otherwise.
-int dec_cursor(void)
+int dec_cursor(size_t cursorind)
 {
-  return dec(&WIN_PRIMCURS(curwin));
+  return dec(&curwin->w_selections.items[cursorind].cursor);
 }
 
 /// Get the line number relative to the current cursor position, i.e. the
@@ -451,10 +452,10 @@ bool set_leftcol(colnr_T leftcol)
   int siso = get_sidescrolloff_value(curwin);
   if (primsel->virtcol > (colnr_T)(lastcol - siso)) {
     retval = true;
-    coladvance(curwin, (colnr_T)(lastcol - siso));
+    coladvance(curwin, (colnr_T)(lastcol - siso), curwin->w_primsel);
   } else if (primsel->virtcol < curwin->w_leftcol + siso) {
     retval = true;
-    coladvance(curwin, (colnr_T)(curwin->w_leftcol + siso));
+    coladvance(curwin, (colnr_T)(curwin->w_leftcol + siso), curwin->w_primsel);
   }
 
   // If the start of the character under the cursor is not on the screen,
@@ -464,11 +465,12 @@ bool set_leftcol(colnr_T leftcol)
   getvvcol(curwin, &primsel->cursor, &s, NULL, &e);
   if (e > (colnr_T)lastcol) {
     retval = true;
-    coladvance(curwin, s - 1);
+    coladvance(curwin, s - 1, curwin->w_primsel);
   } else if (s < curwin->w_leftcol) {
     retval = true;
-    if (coladvance(curwin, e + 1) == FAIL) {    // there isn't another character
-      curwin->w_leftcol = s;            // adjust w_leftcol instead
+    if (coladvance(curwin, e + 1, curwin->w_primsel) == FAIL) {
+      // If there isn't another character adjust w_leftcol instead
+      curwin->w_leftcol = s;
       changed_cline_bef_curs(curwin);
     }
   }

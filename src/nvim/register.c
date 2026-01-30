@@ -1554,19 +1554,19 @@ void do_put(int regname, yankreg_T *reg, int dir, int count, int flags)
 
   if (cur_ve_flags == kOptVeFlagAll && y_type == kMTCharWise) {
     if (gchar_cursor() == TAB) {
-      int viscol = getviscol();
+      int viscol = getviscol(curwin->w_primsel);
       OptInt ts = curbuf->b_p_ts;
       // Don't need to insert spaces when "p" on the last position of a
       // tab or "P" on the first position.
       if (dir == FORWARD
           ? tabstop_padding(viscol, ts, curbuf->b_p_vts_array) != 1
           : cursor->coladd > 0) {
-        coladvance_force(viscol);
+        coladvance_force(viscol, curwin->w_primsel);
       } else {
         cursor->coladd = 0;
       }
     } else if (cursor->coladd > 0 || gchar_cursor() == NUL) {
-      coladvance_force(getviscol() + (dir == FORWARD));
+      coladvance_force(getviscol(curwin->w_primsel) + (dir == FORWARD), curwin->w_primsel);
     }
   }
 
@@ -1819,7 +1819,7 @@ void do_put(int regname, yankreg_T *reg, int dir, int count, int flags)
             pos_T pos = {
               .lnum = lnum,
             };
-            if (getvpos(curwin, &pos, vcol) == OK) {
+            if (getvpos(curwin, &pos, vcol, curwin->w_primsel) == OK) {
               col = pos.col;
             } else {
               col = MAXCOL;

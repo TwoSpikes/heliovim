@@ -911,12 +911,12 @@ int op_delete(oparg_T *oap)
           return FAIL;
         }
         if (oap->line_count == 1) {
-          endcol = getviscol2(oap->end.col, oap->end.coladd);
+          endcol = getviscol2(oap->end.col, oap->end.coladd, curwin->w_primsel);
         }
-        coladvance_force(getviscol2(oap->start.col, oap->start.coladd));
+        coladvance_force(getviscol2(oap->start.col, oap->start.coladd, curwin->w_primsel), curwin->w_primsel);
         oap->start = *cursor;
         if (oap->line_count == 1) {
-          coladvance(curwin, endcol);
+          coladvance(curwin, endcol, curwin->w_primsel);
           oap->end.col = cursor->col;
           oap->end.coladd = cursor->coladd;
           *cursor = oap->start;
@@ -933,7 +933,7 @@ int op_delete(oparg_T *oap)
           return FAIL;
         }
         *cursor = oap->end;
-        coladvance_force(getviscol2(oap->end.col, oap->end.coladd));
+        coladvance_force(getviscol2(oap->end.col, oap->end.coladd, curwin->w_primsel), curwin->w_primsel);
         oap->end = *cursor;
         *cursor = oap->start;
       }
@@ -1079,7 +1079,7 @@ static void replace_character(int c)
   ins_char(c);
   State = n;
   // Backup to the replaced character.
-  dec_cursor();
+  dec_cursor(curwin->w_primsel);
 }
 
 /// Replace a whole area with one character.
@@ -1129,7 +1129,7 @@ static int op_replace(oparg_T *oap, int c)
         pos_T vpos;
 
         vpos.lnum = cursor->lnum;
-        getvpos(curwin, &vpos, oap->start_vcol);
+        getvpos(curwin, &vpos, oap->start_vcol, curwin->w_primsel);
         bd.startspaces += vpos.coladd;
         n = bd.startspaces;
       } else {
@@ -1260,11 +1260,12 @@ static int op_replace(oparg_T *oap, int c)
               // oap->end has to be recalculated when
               // the tab breaks
               end_vcol = getviscol2(oap->end.col,
-                                    oap->end.coladd);
+                                    oap->end.coladd,
+                                    curwin->w_primsel);
             }
-            coladvance_force(getviscol());
+            coladvance_force(getviscol(curwin->w_primsel), curwin->w_primsel);
             if (cursor->lnum == oap->end.lnum) {
-              getvpos(curwin, &oap->end, end_vcol);
+              getvpos(curwin, &oap->end, end_vcol, curwin->w_primsel);
             }
           }
           // with "coladd" set may move to just after a TAB
@@ -1285,7 +1286,8 @@ static int op_replace(oparg_T *oap, int c)
         // oap->end has been trimmed so it's effectively inclusive;
         // as a result an extra +1 must be counted so we don't
         // trample the NUL byte.
-        coladvance_force(getviscol2(oap->end.col, oap->end.coladd) + 1);
+        coladvance_force(getviscol2(oap->end.col, oap->end.coladd, curwin->w_primsel) + 1,
+                         curwin->w_primsel);
         cursor->col -= (virtcols + 1);
         for (; virtcols >= 0; virtcols--) {
           if (utf_char2len(c) > 1) {
@@ -1300,7 +1302,7 @@ static int op_replace(oparg_T *oap, int c)
       }
 
       // Advance to next character, stop at the end of the file.
-      if (inc_cursor() == -1) {
+      if (inc_cursor(curwin->w_primsel) == -1) {
         break;
       }
     }
@@ -1499,7 +1501,8 @@ void op_insert(oparg_T *oap, int count1)
       }
       curwin->w_ve_flags = kOptVeFlagAll;
       coladvance_force(oap->op_type == OP_APPEND
-                       ? oap->end_vcol + 1 : getviscol());
+                       ? oap->end_vcol + 1 : getviscol(curwin->w_primsel),
+                       curwin->w_primsel);
       if (oap->op_type == OP_APPEND) {
         cursor->col--;
       }
@@ -1543,7 +1546,7 @@ void op_insert(oparg_T *oap, int count1)
       // Works just like an 'i'nsert on the next character.
       if (!LINEEMPTY(cursor->lnum)
           && oap->start_vcol != oap->end_vcol) {
-        inc_cursor();
+        inc_cursor(curwin->w_primsel);
       }
     }
   }
@@ -1586,7 +1589,9 @@ void op_insert(oparg_T *oap, int count1)
     // to adjust the block for that.  But only do it, if the difference
     // does not come from indent kicking in.
     if (oap->start.lnum == curbuf->b_op_start_orig.lnum && !bd.is_MAX && !did_indent) {
-      const int t = getviscol2(curbuf->b_op_start_orig.col, curbuf->b_op_start_orig.coladd);
+      const int t = getviscol2(curbuf->b_op_start_orig.col,
+                               curbuf->b_op_start_orig.coladd,
+                               curwin->w_primsel);
 
       if (oap->op_type == OP_INSERT
           && oap->start.col + oap->start.coladd
@@ -1704,7 +1709,7 @@ int op_change(oparg_T *oap)
 
   if ((l > cursor->col) && !LINEEMPTY(cursor->lnum)
       && !virtual_op) {
-    inc_cursor();
+    inc_cursor(curwin->w_primsel);
   }
 
   // check for still on same line (<CR> in inserted text meaningless)
@@ -1713,7 +1718,7 @@ int op_change(oparg_T *oap)
     // Add spaces before getting the current line length.
     if (virtual_op && (cursor->coladd > 0
                        || gchar_cursor() == NUL)) {
-      coladvance_force(getviscol());
+      coladvance_force(getviscol(curwin->w_primsel), curwin->w_primsel);
     }
     firstline = ml_get(oap->start.lnum);
     pre_textlen = ml_get_len(oap->start.lnum);
@@ -1764,7 +1769,7 @@ int op_change(oparg_T *oap)
           // initial coladd offset as part of "startspaces"
           if (bd.is_short) {
             vpos.lnum = linenr;
-            getvpos(curwin, &vpos, oap->start_vcol);
+            getvpos(curwin, &vpos, oap->start_vcol, curwin->w_primsel);
           } else {
             vpos.coladd = 0;
           }
@@ -1811,7 +1816,7 @@ void adjust_cursor_eol(void)
   }
 
   // Put the cursor on the last character in the line.
-  dec_cursor();
+  dec_cursor(curwin->w_primsel);
 
   if (cur_ve_flags == kOptVeFlagAll) {
     colnr_T scol, ecol;
@@ -3269,11 +3274,11 @@ static void get_op_vcol(oparg_T *oap, colnr_T redo_VIsual_vcol, bool initial)
   // (Actually, this does convert column positions into character
   // positions)
   cursor->lnum = oap->end.lnum;
-  coladvance(curwin, oap->end_vcol);
+  coladvance(curwin, oap->end_vcol, curwin->w_primsel);
   oap->end = *cursor;
 
   *cursor = oap->start;
-  coladvance(curwin, oap->start_vcol);
+  coladvance(curwin, oap->start_vcol, curwin->w_primsel);
   oap->start = *cursor;
 }
 
@@ -3407,7 +3412,7 @@ void do_pending_operator(cmdarg_T *cap, int old_col, bool gui_yank)
         } else {
           primsel->curswant = MAXCOL;
         }
-        coladvance(curwin, primsel->curswant);
+        coladvance(curwin, primsel->curswant, curwin->w_primsel);
       }
       cap->count0 = redo_VIsual.rv_count;
       cap->count1 = (cap->count0 == 0 ? 1 : cap->count0);
@@ -3924,7 +3929,7 @@ void do_pending_operator(cmdarg_T *cap, int old_col, bool gui_yank)
           && (oap->op_type == OP_LSHIFT || oap->op_type == OP_RSHIFT
               || oap->op_type == OP_DELETE)) {
         reset_lbr();
-        coladvance(curwin, primsel->curswant = old_col);
+        coladvance(curwin, primsel->curswant = old_col, curwin->w_primsel);
       }
     } else {
       *cursor = old_cursor;

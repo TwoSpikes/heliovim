@@ -944,7 +944,7 @@ static void terminal_check_cursor(void)
   }
   // Nudge cursor when returning to normal-mode.
   int off = is_focused(term) ? 0 : (curwin->w_p_rl ? 1 : -1);
-  coladvance(curwin, MAX(0, term->cursor.col + off));
+  coladvance(curwin, MAX(0, term->cursor.col + off), curwin->w_primsel);
 }
 
 static bool terminal_check_focus(TerminalState *const s)
